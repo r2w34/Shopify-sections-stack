@@ -865,6 +865,22 @@ export default function SectionStorePage() {
                           opacity: selectedSection.isFree ? 0.6 : 1,
                         }}
                         disabled={selectedSection.isFree}
+                        onClick={async () => {
+                          const res = await fetch("/api/purchase-section", {
+                            method: "POST",
+                            headers: { "Content-Type": "application/json" },
+                            body: JSON.stringify({
+                              sectionId: selectedSection._id,
+                            }),
+                          });
+
+                          const data = await res.json();
+                          if (data.confirmationUrl) {
+                            window.location.href = data.confirmationUrl;
+                          } else {
+                            alert("Error: " + JSON.stringify(data.error));
+                          }
+                        }}
                       >
                         Purchase section
                       </button>
