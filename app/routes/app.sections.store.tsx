@@ -48,14 +48,14 @@ type SerializedSection = {
 };
 
 export async function loader({ request }: LoaderFunctionArgs) {
-  console.log("🔍 [LOADER] Starting section store data fetch...");
+  // console.log("🔍 [LOADER] Starting section store data fetch...");
 
   await connectToDB();
   const url = new URL(request.url);
   const category = url.searchParams.get("category") || "all";
   const search = url.searchParams.get("search") || "";
 
-  console.log("🔍 [LOADER] Query params:", { category, search });
+  // console.log("🔍 [LOADER] Query params:", { category, search });
 
   const query: any = {};
 
@@ -85,26 +85,26 @@ export async function loader({ request }: LoaderFunctionArgs) {
     ];
   }
 
-  console.log("🔍 [LOADER] MongoDB query:", JSON.stringify(query, null, 2));
+  // console.log("🔍 [LOADER] MongoDB query:", JSON.stringify(query, null, 2));
 
   const sections = await SectionModel.find(query)
     .sort({ createdAt: -1 })
     .lean();
 
-  console.log("🔍 [LOADER] Raw sections from DB:", sections.length);
-  console.log(
-    "🔍 [LOADER] First section sample:",
-    sections[0]
-      ? {
-          name: sections[0].name,
-          category: sections[0].category,
-          tags: sections[0].tags,
-          detailedFeatures: sections[0].detailedFeatures,
-          imageGallery: sections[0].imageGallery,
-          thumbnailUrl: sections[0].thumbnailUrl,
-        }
-      : "No sections found",
-  );
+  // console.log("🔍 [LOADER] Raw sections from DB:", sections.length);
+  // console.log(
+  //   "🔍 [LOADER] First section sample:",
+  //   sections[0]
+  //     ? {
+  //         name: sections[0].name,
+  //         category: sections[0].category,
+  //         tags: sections[0].tags,
+  //         detailedFeatures: sections[0].detailedFeatures,
+  //         imageGallery: sections[0].imageGallery,
+  //         thumbnailUrl: sections[0].thumbnailUrl,
+  //       }
+  //     : "No sections found",
+  // );
 
   // Transform the data to ensure proper typing
   const transformedSections = sections.map((section: any) => ({
@@ -128,11 +128,8 @@ export async function loader({ request }: LoaderFunctionArgs) {
     updatedAt: section.updatedAt,
   }));
 
-  console.log("🔍 [LOADER] Transformed sections:", transformedSections.length);
-  console.log(
-    "🔍 [LOADER] First transformed section:",
-    transformedSections[0] || "No sections",
-  );
+  // console.log("🔍 [LOADER] Transformed sections:", transformedSections.length);
+ 
 
   return json({ sections: transformedSections, category, search });
 }
@@ -159,9 +156,9 @@ export default function SectionStorePage() {
   const [searchParams, setSearchParams] = useSearchParams();
   const navigate = useNavigate();
 
-  console.log("🎨 [COMPONENT] Received sections:", sections.length);
-  console.log("🎨 [COMPONENT] Current category:", category);
-  console.log("🎨 [COMPONENT] Current search:", search);
+  // console.log("🎨 [COMPONENT] Received sections:", sections.length);
+  // console.log("🎨 [COMPONENT] Current category:", category);
+  // console.log("🎨 [COMPONENT] Current search:", search);
 
   const [selectedSection, setSelectedSection] =
     useState<SerializedSection | null>(null);
@@ -171,7 +168,7 @@ export default function SectionStorePage() {
 
   const handleCategoryChange = useCallback(
     (newCategory: string) => {
-      console.log("🔄 [CATEGORY] Changing to:", newCategory);
+      // console.log("🔄 [CATEGORY] Changing to:", newCategory);
       setSelectedCategory(newCategory);
       const params = new URLSearchParams(searchParams);
       if (newCategory === "all") {
@@ -186,7 +183,7 @@ export default function SectionStorePage() {
 
   const handleSearchChange = useCallback(
     (value: string) => {
-      console.log("🔍 [SEARCH] Search value changed:", value);
+      // console.log("🔍 [SEARCH] Search value changed:", value);
       setSearchValue(value);
 
       const timeoutId = setTimeout(() => {
@@ -205,7 +202,7 @@ export default function SectionStorePage() {
   );
 
   const handleSearchSubmit = useCallback(() => {
-    console.log("🔍 [SEARCH] Manual search submit:", searchValue);
+    // console.log("🔍 [SEARCH] Manual search submit:", searchValue);
     const params = new URLSearchParams(searchParams);
     if (searchValue) {
       params.set("search", searchValue);
@@ -216,20 +213,13 @@ export default function SectionStorePage() {
   }, [searchValue, searchParams, setSearchParams]);
 
   const handleSectionClick = useCallback((section: SerializedSection) => {
-    console.log("🖱️ [MODAL] Opening section:", {
-      name: section.name,
-      category: section.category,
-      tags: section.tags,
-      detailedFeatures: section.detailedFeatures,
-      imageGallery: section.imageGallery,
-      thumbnailUrl: section.thumbnailUrl,
-    });
+    
     setSelectedSection(section);
     setCurrentImageIndex(0); // Reset image slider
   }, []);
 
   const handleCloseModal = useCallback(() => {
-    console.log("🖱️ [MODAL] Closing modal");
+    // console.log("🖱️ [MODAL] Closing modal");
     setSelectedSection(null);
     setCurrentImageIndex(0);
   }, []);
@@ -286,12 +276,7 @@ export default function SectionStorePage() {
       return true;
     });
 
-    console.log(
-      "🔍 [FILTER] Filtered sections:",
-      filtered.length,
-      "from",
-      sections.length,
-    );
+   
     return filtered;
   }, [sections, selectedCategory]);
 
@@ -876,7 +861,11 @@ export default function SectionStorePage() {
 
                           const data = await res.json();
                           if (data.confirmationUrl) {
-                            window.location.href = data.confirmationUrl;
+                            if (window.top) {
+                              window.top.location.href = data.confirmationUrl;
+                            } else {
+                              window.location.href = data.confirmationUrl;
+                            }
                           } else {
                             alert("Error: " + JSON.stringify(data.error));
                           }

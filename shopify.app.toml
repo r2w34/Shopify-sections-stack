@@ -3,7 +3,7 @@
 client_id = "e3838eae9d8f4d520127ce676a9c2d60"
 name = "sections-stack"
 handle = "sections-stack"
-application_url = "https://convicted-jun-cooler-cg.trycloudflare.com"
+application_url = "https://accurate-familiar-baptist-beats.trycloudflare.com"
 embedded = true
 
 [build]
@@ -21,13 +21,23 @@ api_version = "2025-04"
   topics = [ "app/scopes_update" ]
   uri = "/webhooks/app/scopes_update"
 
+ 
+  
 [access_scopes]
 # Learn more at https://shopify.dev/docs/apps/tools/cli/configuration#access_scopes
 scopes = "read_themes,write_themes"
 
 
 [auth]
-redirect_urls = ["https://convicted-jun-cooler-cg.trycloudflare.com/auth/callback", "https://convicted-jun-cooler-cg.trycloudflare.com/auth/shopify/callback", "https://convicted-jun-cooler-cg.trycloudflare.com/api/auth/callback"]
+redirect_urls = ["https://accurate-familiar-baptist-beats.trycloudflare.com/auth/callback", "https://accurate-familiar-baptist-beats.trycloudflare.com/auth/shopify/callback", "https://accurate-familiar-baptist-beats.trycloudflare.com/api/auth/callback"]
 
 [pos]
 embedded = false
+
+
+
+
+
+
+
+ 

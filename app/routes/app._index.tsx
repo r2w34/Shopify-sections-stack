@@ -1,10 +1,19 @@
-"use client"
+"use client";
 
-import { json, type LoaderFunctionArgs, type ActionFunctionArgs } from "@remix-run/node"
-import { useLoaderData, Form, useActionData, useNavigation } from "@remix-run/react"
-import { authenticate } from "../shopify.server"
-import fs from "fs/promises"
-import path from "path"
+import {
+  json,
+  type LoaderFunctionArgs,
+  type ActionFunctionArgs,
+} from "@remix-run/node";
+import {
+  useLoaderData,
+  Form,
+  useActionData,
+  useNavigation,
+} from "@remix-run/react";
+import { authenticate } from "../shopify.server";
+import fs from "fs/promises";
+import path from "path";
 import {
   Page,
   Layout,
@@ -22,26 +31,26 @@ import {
   Divider,
   CalloutCard,
   BlockStack,
-} from "@shopify/polaris"
-import { useState } from "react"
+} from "@shopify/polaris";
+import { useState } from "react";
 
 // === Types ===
 interface Theme {
-  id: string
-  name: string
-  role: string
+  id: string;
+  name: string;
+  role: string;
 }
 
 interface ActionData {
-  success?: boolean
-  message?: string
-  error?: string
+  success?: boolean;
+  message?: string;
+  error?: string;
 }
 
 // === Loader ===
 export async function loader({ request }: LoaderFunctionArgs) {
   try {
-    const { admin } = await authenticate.admin(request)
+    const { admin } = await authenticate.admin(request);
 
     // Fetch themes via GraphQL
     const response = await admin.graphql(`
@@ -58,69 +67,70 @@ export async function loader({ request }: LoaderFunctionArgs) {
           }
         }
       }
-    `)
+    `);
 
-    const jsonData = (await response.json()) as any
+    const jsonData = (await response.json()) as any;
 
     if (jsonData.errors) {
-      console.error("GraphQL errors:", jsonData.errors)
-      throw new Error(`GraphQL Error: ${JSON.stringify(jsonData.errors)}`)
+      console.error("GraphQL errors:", jsonData.errors);
+      throw new Error(`GraphQL Error: ${JSON.stringify(jsonData.errors)}`);
     }
 
-    const themes = jsonData.data.themes.edges.map((edge: any) => edge.node)
-    console.log("Loaded themes:", themes)
+    const themes = jsonData.data.themes.edges.map((edge: any) => edge.node);
+    // console.log("Loaded themes:", themes)
 
     // Read local section files from app/sections
     // Fix: Use process.cwd() for more reliable path resolution
-    const sectionsDir = path.join(process.cwd(), "app", "sections")
-    console.log("Looking for sections in:", sectionsDir)
+    const sectionsDir = path.join(process.cwd(), "app", "sections");
+    // console.log("Looking for sections in:", sectionsDir)
 
-    let sectionFiles: string[] = []
+    let sectionFiles: string[] = [];
     try {
       // Check if directory exists first
-      await fs.access(sectionsDir)
-      const files = await fs.readdir(sectionsDir)
-      sectionFiles = files.filter((file) => file.endsWith(".liquid"))
-      console.log("Found section files:", sectionFiles)
+      await fs.access(sectionsDir);
+      const files = await fs.readdir(sectionsDir);
+      sectionFiles = files.filter((file) => file.endsWith(".liquid"));
+      // console.log("Found section files:", sectionFiles)
     } catch (err) {
-      console.warn("Sections directory not found or empty:", err)
+      console.warn("Sections directory not found or empty:", err);
       // Create the directory if it doesn't exist
       try {
-        await fs.mkdir(sectionsDir, { recursive: true })
-        console.log("Created sections directory:", sectionsDir)
+        await fs.mkdir(sectionsDir, { recursive: true });
+        // console.log("Created sections directory:", sectionsDir)
       } catch (createErr) {
-        console.error("Failed to create sections directory:", createErr)
+        console.error("Failed to create sections directory:", createErr);
       }
     }
 
-    return json({ themes, sectionFiles, sectionsDir })
+    return json({ themes, sectionFiles, sectionsDir });
   } catch (error) {
-    console.error("Loader error:", error)
-    throw new Response("Failed to load themes and sections", { status: 500 })
+    console.error("Loader error:", error);
+    throw new Response("Failed to load themes and sections", { status: 500 });
   }
 }
 
 // === Action ===
 export async function action({ request }: ActionFunctionArgs) {
-  console.log("=== Action started ===")
+  // console.log("=== Action started ===")
 
   try {
-    const formData = await request.formData()
-    const sectionName = formData.get("section")
-    const themeId = formData.get("themeId")
-    const themeName = formData.get("themeName")
+    const formData = await request.formData();
+    const sectionName = formData.get("section");
+    const themeId = formData.get("themeId");
+    const themeName = formData.get("themeName");
 
-    console.log("Form data received:", { sectionName, themeId, themeName })
+    // console.log("Form data received:", { sectionName, themeId, themeName })
 
     // Validation
     if (typeof sectionName !== "string" || typeof themeId !== "string") {
-      console.error("Missing required fields")
+      console.error("Missing required fields");
       return json<ActionData>(
         {
-          error: "Missing required fields: section name and theme ID are required",
+          error:
+            "Missing required fields: section name and theme ID are required",
         },
         { status: 400 },
-      )
+      );
     }
 
     // Fix: More flexible validation - allow selection of .liquid files
@@ -130,59 +140,59 @@ export async function action({ request }: ActionFunctionArgs) {
           error: "Please select a section file",
         },
         { status: 400 },
-      )
+      );
     }
 
     if (!sectionName.endsWith(".liquid")) {
-      console.error("Invalid file extension")
+      console.error("Invalid file extension");
       return json<ActionData>(
         {
           error: "Invalid section file: must be a .liquid file",
         },
         { status: 400 },
-      )
+      );
     }
 
-    const { admin, session } = await authenticate.admin(request)
+    const { admin, session } = await authenticate.admin(request);
 
     if (!session) {
-      console.error("No session found")
+      console.error("No session found");
       return json<ActionData>(
         {
           error: "Authentication failed: user session not found",
         },
         { status: 401 },
-      )
+      );
     }
 
-    console.log("Session info:", { shop: session.shop, hasAccessToken: !!session.accessToken })
+    // console.log("Session info:", { shop: session.shop, hasAccessToken: !!session.accessToken })
 
     // Fix: Use consistent path resolution
-    const filePath = path.join(process.cwd(), "app", "sections", sectionName)
-    console.log("Reading file from:", filePath)
+    const filePath = path.join(process.cwd(), "app", "sections", sectionName);
+    // console.log("Reading file from:", filePath)
 
-    let content: string
+    let content: string;
     try {
-      content = await fs.readFile(filePath, "utf-8")
-      console.log(`Successfully read section file: ${sectionName}, length: ${content.length}`)
+      content = await fs.readFile(filePath, "utf-8");
+      // console.log(`Successfully read section file: ${sectionName}, length: ${content.length}`)
     } catch (err) {
-      console.error(`Failed to read section file: ${sectionName}`, err)
+      console.error(`Failed to read section file: ${sectionName}`, err);
       return json<ActionData>(
         {
           error: `Section file not found: ${sectionName}. Make sure the file exists in app/sections/`,
         },
         { status: 404 },
-      )
+      );
     }
 
     if (!content.trim()) {
-      console.error("Section file is empty")
+      console.error("Section file is empty");
       return json<ActionData>(
         {
           error: "Section file is empty",
         },
         { status: 400 },
-      )
+      );
     }
 
     const mutation = `
@@ -197,7 +207,7 @@ export async function action({ request }: ActionFunctionArgs) {
           }
         }
       }
-    `
+    `;
 
     const variables = {
       themeId: themeId,
@@ -210,75 +220,78 @@ export async function action({ request }: ActionFunctionArgs) {
           },
         },
       ],
-    }
+    };
 
-    console.log("Uploading via GraphQL themeFilesUpsert:", {
-      themeId,
-      filename: `sections/${sectionName}`,
-      contentLength: content.length,
-    })
+    // console.log("Uploading via GraphQL themeFilesUpsert:", {
+    //   themeId,
+    //   filename: `sections/${sectionName}`,
+    //   contentLength: content.length,
+    // })
 
-    const response = await admin.graphql(mutation, { variables })
-    const responseData = (await response.json()) as any
+    const response = await admin.graphql(mutation, { variables });
+    const responseData = (await response.json()) as any;
 
-    console.log("GraphQL response:", JSON.stringify(responseData, null, 2))
+    // console.log("GraphQL response:", JSON.stringify(responseData, null, 2))
 
     if (responseData.errors) {
-      console.error("GraphQL errors:", responseData.errors)
+      console.error("GraphQL errors:", responseData.errors);
       return json<ActionData>(
         {
           error: `GraphQL Error: ${JSON.stringify(responseData.errors)}`,
         },
         { status: 400 },
-      )
+      );
     }
 
-    const { upsertedThemeFiles, userErrors } = responseData.data.themeFilesUpsert
+    const { upsertedThemeFiles, userErrors } =
+      responseData.data.themeFilesUpsert;
 
     if (userErrors && userErrors.length > 0) {
-      console.error("User errors:", userErrors)
+      console.error("User errors:", userErrors);
       return json<ActionData>(
         {
           error: `Upload errors: ${JSON.stringify(userErrors)}`,
         },
         { status: 400 },
-      )
+      );
     }
 
-    console.log("Section file uploaded successfully:", upsertedThemeFiles)
+    // console.log("Section file uploaded successfully:", upsertedThemeFiles)
 
     return json<ActionData>({
       success: true,
       message: `Successfully uploaded "${sectionName}" to "${themeName || "theme"}"`,
-    })
+    });
   } catch (error) {
-    console.error("Action error:", error)
+    console.error("Action error:", error);
     return json<ActionData>(
       {
         error: `Unexpected error: ${error instanceof Error ? error.message : "Unknown error"}`,
       },
       { status: 500 },
-    )
+    );
   }
 }
 
 // === UI Component ===
 export default function ThemesPage() {
-  const { themes, sectionFiles, sectionsDir } = useLoaderData<typeof loader>()
-  const actionData = useActionData<ActionData>()
-  const navigation = useNavigation()
-  const isSubmitting = navigation.state === "submitting"
-  const [debugOpen, setDebugOpen] = useState(false)
+  const { themes, sectionFiles, sectionsDir } = useLoaderData<typeof loader>();
+  const actionData = useActionData<ActionData>();
+  const navigation = useNavigation();
+  const isSubmitting = navigation.state === "submitting";
+  const [debugOpen, setDebugOpen] = useState(false);
 
   // Add this after the existing useState declarations
-  const [selectedSections, setSelectedSections] = useState<{ [key: string]: string }>({})
+  const [selectedSections, setSelectedSections] = useState<{
+    [key: string]: string;
+  }>({});
 
   const handleSectionChange = (themeId: string, value: string) => {
     setSelectedSections((prev) => ({
       ...prev,
       [themeId]: value,
-    }))
-  }
+    }));
+  };
 
   const sectionOptions = [
     { label: "Choose a section file...", value: "" },
@@ -286,13 +299,16 @@ export default function ThemesPage() {
       label: file,
       value: file,
     })),
-  ]
+  ];
 
-  console.log("Section options:", sectionOptions)
-  console.log("Selected sections:", selectedSections)
+  // console.log("Section options:", sectionOptions)
+  // console.log("Selected sections:", selectedSections)
 
   return (
-    <Page title="Theme Manager" subtitle="Upload section files to your Shopify themes">
+    <Page
+      title="Theme Manager"
+      subtitle="Upload section files to your Shopify themes"
+    >
       <Layout>
         <Layout.Section>
           {/* Success/Error Messages */}
@@ -335,7 +351,8 @@ export default function ThemesPage() {
                   No Section Files Found
                 </Text>
                 <Text as="p" tone="subdued">
-                  Add .liquid files to the app/sections directory to get started.
+                  Add .liquid files to the app/sections directory to get
+                  started.
                 </Text>
                 <Text as="p" tone="subdued">
                   Looking in: {sectionsDir}
@@ -349,7 +366,8 @@ export default function ThemesPage() {
                   }}
                 >
                   <p>
-                    Create a .liquid file in the app/sections directory. For example: app/sections/hero-banner.liquid
+                    Create a .liquid file in the app/sections directory. For
+                    example: app/sections/hero-banner.liquid
                   </p>
                 </CalloutCard>
               </BlockStack>
@@ -371,14 +389,18 @@ export default function ThemesPage() {
                   </Text>
                   <InlineStack gap="400">
                     <Text as="p">Themes found: {themes.length}</Text>
-                    <Text as="p">Section files found: {sectionFiles.length}</Text>
+                    <Text as="p">
+                      Section files found: {sectionFiles.length}
+                    </Text>
                   </InlineStack>
                   <Text as="p">Sections directory: {sectionsDir}</Text>
                   <TextContainer>
                     <Text variant="headingSm" as="h4">
                       Theme Details:
                     </Text>
-                    <pre style={{ fontSize: "12px", overflow: "auto" }}>{JSON.stringify(themes, null, 2)}</pre>
+                    <pre style={{ fontSize: "12px", overflow: "auto" }}>
+                      {JSON.stringify(themes, null, 2)}
+                    </pre>
                   </TextContainer>
                 </BlockStack>
               </Collapsible>
@@ -402,7 +424,9 @@ export default function ThemesPage() {
                 <Text variant="headingMd" as="h3">
                   No Themes Found
                 </Text>
-                <Text as="p">No themes are available in your Shopify store.</Text>
+                <Text as="p">
+                  No themes are available in your Shopify store.
+                </Text>
               </BlockStack>
             </Card>
           ) : (
@@ -423,7 +447,11 @@ export default function ThemesPage() {
                           <Text variant="headingMd" as="h3">
                             {theme.name}
                           </Text>
-                          <Badge tone={theme.role === "main" ? "success" : "info"}>{theme.role}</Badge>
+                          <Badge
+                            tone={theme.role === "main" ? "success" : "info"}
+                          >
+                            {theme.role}
+                          </Badge>
                         </InlineStack>
 
                         <Text as="p" tone="subdued">
@@ -439,12 +467,23 @@ export default function ThemesPage() {
                               url: "#instructions",
                             }}
                           >
-                            <p>Add .liquid files to the app/sections directory to get started.</p>
+                            <p>
+                              Add .liquid files to the app/sections directory to
+                              get started.
+                            </p>
                           </CalloutCard>
                         ) : (
                           <Form method="post">
-                            <input type="hidden" name="themeId" value={theme.id} />
-                            <input type="hidden" name="themeName" value={theme.name} />
+                            <input
+                              type="hidden"
+                              name="themeId"
+                              value={theme.id}
+                            />
+                            <input
+                              type="hidden"
+                              name="themeName"
+                              value={theme.name}
+                            />
 
                             <FormLayout>
                               <Select
@@ -452,13 +491,22 @@ export default function ThemesPage() {
                                 options={sectionOptions}
                                 name="section"
                                 value={selectedSections[theme.id] || ""}
-                                onChange={(value) => handleSectionChange(theme.id, value)}
+                                onChange={(value) =>
+                                  handleSectionChange(theme.id, value)
+                                }
                                 disabled={isSubmitting}
                                 requiredIndicator
                               />
 
-                              <Button submit variant="primary" loading={isSubmitting} disabled={isSubmitting}>
-                                {isSubmitting ? "Uploading..." : "Upload to Theme"}
+                              <Button
+                                submit
+                                variant="primary"
+                                loading={isSubmitting}
+                                disabled={isSubmitting}
+                              >
+                                {isSubmitting
+                                  ? "Uploading..."
+                                  : "Upload to Theme"}
                               </Button>
                             </FormLayout>
                           </Form>
@@ -479,9 +527,16 @@ export default function ThemesPage() {
                 Instructions
               </Text>
               <List type="number">
-                <List.Item>Place your .liquid section files in the app/sections directory</List.Item>
-                <List.Item>Select a theme and choose the section file you want to upload</List.Item>
-                <List.Item>Click "Upload to Theme" to add the section to your Shopify theme</List.Item>
+                <List.Item>
+                  Place your .liquid section files in the app/sections directory
+                </List.Item>
+                <List.Item>
+                  Select a theme and choose the section file you want to upload
+                </List.Item>
+                <List.Item>
+                  Click "Upload to Theme" to add the section to your Shopify
+                  theme
+                </List.Item>
               </List>
               <Text as="p" tone="subdued">
                 Example section file path: app/sections/hero-banner.liquid
@@ -491,5 +546,5 @@ export default function ThemesPage() {
         </Layout.Section>
       </Layout>
     </Page>
-  )
+  );
 }

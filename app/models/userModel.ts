@@ -1,15 +1,30 @@
+// app/models/userModel.ts
 import mongoose from "mongoose";
 
-const UserSchema = new mongoose.Schema(
-  {
-    shop: { type: String, required: true, unique: true },
-    accessToken: String,
-    installedAt: Date,
+const userSchema = new mongoose.Schema({
+  shop: {
+    type: String,
+    required: true,
+    unique: true
   },
-  { timestamps: true }
-);
+  accessToken: {
+    type: String,
+    required: true
+  },
+  scope: {
+    type: String,
+    required: true
+  },
+  createdAt: {
+    type: Date,
+    default: Date.now
+  },
+  updatedAt: {
+    type: Date,
+    default: Date.now
+  }
+});
 
-const UserModel =
-  mongoose.models.User || mongoose.model("User", UserSchema);
+const UserModel = mongoose.models.User || mongoose.model("User", userSchema);
 
 export default UserModel;
