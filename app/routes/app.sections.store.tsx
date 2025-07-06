@@ -129,7 +129,6 @@ export async function loader({ request }: LoaderFunctionArgs) {
   }));
 
   // console.log("🔍 [LOADER] Transformed sections:", transformedSections.length);
- 
 
   return json({ sections: transformedSections, category, search });
 }
@@ -213,7 +212,6 @@ export default function SectionStorePage() {
   }, [searchValue, searchParams, setSearchParams]);
 
   const handleSectionClick = useCallback((section: SerializedSection) => {
-    
     setSelectedSection(section);
     setCurrentImageIndex(0); // Reset image slider
   }, []);
@@ -276,7 +274,6 @@ export default function SectionStorePage() {
       return true;
     });
 
-   
     return filtered;
   }, [sections, selectedCategory]);
 
@@ -359,7 +356,7 @@ export default function SectionStorePage() {
                       {filteredSections.map((section: SerializedSection) => (
                         <Grid.Cell
                           key={section._id}
-                          columnSpan={{ xs: 6, sm: 3, md: 2, lg: 2, xl: 2 }}
+                          columnSpan={{ xs: 6, sm: 3, md: 2, lg: 3, xl: 3 }}
                         >
                           <Card padding="0">
                             <div
@@ -444,9 +441,7 @@ export default function SectionStorePage() {
                                   <Text as="h3" variant="headingMd" truncate>
                                     {section.name}
                                   </Text>
-                                  <Text as="p" tone="subdued" truncate>
-                                    {section.identifier}
-                                  </Text>
+
                                   {section.description && (
                                     <Text as="p" tone="subdued">
                                       {section.description.length > 80
@@ -823,8 +818,7 @@ export default function SectionStorePage() {
                     </div>
                   )}
 
-                  {/* Action Buttons */}
-                  <div style={{ marginTop: "auto", paddingTop: "20px" }}>
+                  <div style={{ marginTop: "0", paddingTop: "20px" }}>
                     <div
                       style={{
                         display: "flex",
@@ -836,20 +830,14 @@ export default function SectionStorePage() {
                         style={{
                           width: "100%",
                           padding: "14px",
-                          backgroundColor: selectedSection.isFree
-                            ? "#6d7175"
-                            : "#2c2c2c",
+                          backgroundColor: "#2c2c2c",
                           color: "white",
                           border: "none",
                           borderRadius: "6px",
                           fontSize: "16px",
                           fontWeight: "600",
-                          cursor: selectedSection.isFree
-                            ? "not-allowed"
-                            : "pointer",
-                          opacity: selectedSection.isFree ? 0.6 : 1,
+                          cursor: "pointer",
                         }}
-                        disabled={selectedSection.isFree}
                         onClick={async () => {
                           const res = await fetch("/api/purchase-section", {
                             method: "POST",
@@ -860,11 +848,22 @@ export default function SectionStorePage() {
                           });
 
                           const data = await res.json();
-                          if (data.confirmationUrl) {
+                          if (data.redirectUrl) {
+                            console.log("data.redirectUrl", data.redirectUrl);
+                            navigate(data.redirectUrl);
+                          } else if (data.confirmationUrl) {
                             if (window.top) {
                               window.top.location.href = data.confirmationUrl;
+                              console.warn(
+                                "data.confirmationUrl 1",
+                                data.confirmationUrl,
+                              );
                             } else {
                               window.location.href = data.confirmationUrl;
+                              console.warn(
+                                "data.confirmationUrl ",
+                                data.confirmationUrl,
+                              );
                             }
                           } else {
                             alert("Error: " + JSON.stringify(data.error));
@@ -873,27 +872,6 @@ export default function SectionStorePage() {
                       >
                         Purchase section
                       </button>
-
-                      {selectedSection.demoUrl && (
-                        <button
-                          onClick={() =>
-                            window.open(selectedSection.demoUrl, "_blank")
-                          }
-                          style={{
-                            width: "100%",
-                            padding: "12px",
-                            backgroundColor: "transparent",
-                            color: "#333",
-                            border: "1px solid #e1e3e5",
-                            borderRadius: "6px",
-                            fontSize: "14px",
-                            fontWeight: "500",
-                            cursor: "pointer",
-                          }}
-                        >
-                          View Demo Store
-                        </button>
-                      )}
                     </div>
                   </div>
                 </div>

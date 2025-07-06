@@ -3,7 +3,7 @@
 client_id = "e3838eae9d8f4d520127ce676a9c2d60"
 name = "sections-stack"
 handle = "sections-stack"
-application_url = "https://accurate-familiar-baptist-beats.trycloudflare.com"
+application_url = "https://grateful-led-charm-cole.trycloudflare.com"
 embedded = true
 
 [build]
@@ -29,7 +29,7 @@ scopes = "read_themes,write_themes"
 
 
 [auth]
-redirect_urls = ["https://accurate-familiar-baptist-beats.trycloudflare.com/auth/callback", "https://accurate-familiar-baptist-beats.trycloudflare.com/auth/shopify/callback", "https://accurate-familiar-baptist-beats.trycloudflare.com/api/auth/callback"]
+redirect_urls = ["https://grateful-led-charm-cole.trycloudflare.com/auth/callback", "https://grateful-led-charm-cole.trycloudflare.com/auth/shopify/callback", "https://grateful-led-charm-cole.trycloudflare.com/api/auth/callback"]
 
 [pos]
 embedded = false
