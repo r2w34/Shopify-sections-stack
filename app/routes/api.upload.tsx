@@ -14,7 +14,7 @@ export const action = async ({ request }: ActionFunctionArgs) => {
 
   const buffer = Buffer.from(await file.arrayBuffer());
   const filePath = path.join(os.tmpdir(), file.name);
-  await writeFile(filePath, buffer);
+  await writeFile(filePath, buffer); 
 
   try {
     const result = await uploadToCloudinary(filePath);

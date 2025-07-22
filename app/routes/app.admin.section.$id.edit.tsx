@@ -1,4 +1,4 @@
-"use client"
+"use client";
 
 import {
   Page,
@@ -17,170 +17,144 @@ import {
   Checkbox,
   Tag,
   InlineStack,
-} from "@shopify/polaris"
-import { json, redirect, type LoaderFunctionArgs, type ActionFunctionArgs } from "@remix-run/node"
-import { useLoaderData, Form, useActionData, useNavigate } from "@remix-run/react"
-import { useState } from "react"
-import SectionModel from "app/models/SectionModel"
-import { connectToDB } from "app/db.server"
-import fs from "fs/promises"
-import path from "path"
+} from "@shopify/polaris";
+import {
+  json,
+  redirect,
+  type LoaderFunctionArgs,
+  type ActionFunctionArgs,
+} from "@remix-run/node";
+import {
+  useLoaderData,
+  Form,
+  useActionData,
+  useNavigate,
+} from "@remix-run/react";
+import { useState } from "react";
+import SectionModel from "app/models/SectionModel";
+import SectionContentModel from "app/models/sectionContentModel";
+import { connectToDB } from "app/db.server";
+import { requireAdmin } from "app/utils/requireAdmin";
 
-export async function loader({ params }: LoaderFunctionArgs) {
-  await connectToDB()
-  const sectionId = params.id
-  console.log("📦 [LOADER] sectionId param:", sectionId)
+export async function loader({ params, request }: LoaderFunctionArgs) {
+  await connectToDB();
+  await requireAdmin(request);
+  const sectionId = params.id;
 
   if (!sectionId) {
-    throw new Response("Section ID is required", { status: 400 })
+    throw new Response("Section ID is required", { status: 400 });
   }
 
-  const section = (await SectionModel.findById(sectionId).lean()) as any
-  console.log("✅ [LOADER] Loaded section:", section)
+  const section = (await SectionModel.findById(sectionId).lean()) as any;
+  const sectionContent = (await SectionContentModel.findOne({ sectionId }).lean()) as any;
 
   if (!section) {
-    throw new Response("Section not found", { status: 404 })
+    throw new Response("Section not found", { status: 404 });
   }
 
-  return json({ section })
+  return json({ section, sectionContent });
 }
 
 export async function action({ request, params }: ActionFunctionArgs) {
-  await connectToDB()
-  const sectionId = params.id
-  const formData = await request.formData()
+  await connectToDB();
+  await requireAdmin(request);
+  const sectionId = params.id;
+  const formData = await request.formData();
 
-  const name = formData.get("name")?.toString()
-  const identifier = formData.get("identifier")?.toString()
-  const description = formData.get("description")?.toString()
-  const category = formData.get("category")?.toString()
-  const type = formData.get("type")?.toString()
-  const price = Number.parseFloat(formData.get("price")?.toString() || "0")
-  const thumbnailUrl = formData.get("thumbnailUrl")?.toString()
-  const demoUrl = formData.get("demoUrl")?.toString()
-  const isPopular = formData.get("isPopular") === "on"
-  const isTrending = formData.get("isTrending") === "on"
-  const isFeatured = formData.get("isFeatured") === "on"
+  const name = formData.get("name")?.toString();
+  const description = formData.get("description")?.toString();
+  const category = formData.get("category")?.toString();
+  const type = formData.get("type")?.toString();
+  const price = Number.parseFloat(formData.get("price")?.toString() || "0");
+  const thumbnailUrl = formData.get("thumbnailUrl")?.toString();
+  const isPopular = formData.get("isPopular") === "on";
+  const isTrending = formData.get("isTrending") === "on";
+  const isFeatured = formData.get("isFeatured") === "on";
+  const customCode = formData.get("customCode")?.toString() || "";
 
   // Parse detailed features (one per line)
-  const detailedFeaturesText = formData.get("detailedFeatures")?.toString() || ""
+  const detailedFeaturesText =
+    formData.get("detailedFeatures")?.toString() || "";
   const detailedFeatures = detailedFeaturesText
     .split("\n")
     .map((line) => line.trim())
-    .filter((line) => line.length > 0)
+    .filter((line) => line.length > 0);
 
   // Parse tags (comma separated)
-  const tagsText = formData.get("tags")?.toString() || ""
+  const tagsText = formData.get("tags")?.toString() || "";
   const tags = tagsText
     .split(",")
     .map((tag) => tag.trim())
-    .filter((tag) => tag.length > 0)
+    .filter((tag) => tag.length > 0);
 
   // Parse image gallery URLs (comma separated)
-  const imageGalleryText = formData.get("imageGallery")?.toString() || ""
+  const imageGalleryText = formData.get("imageGallery")?.toString() || "";
   const imageGallery = imageGalleryText
     .split(",")
     .map((url) => url.trim())
-    .filter((url) => url.length > 0)
+    .filter((url) => url.length > 0);
 
-  console.log("📨 [ACTION] Form submission for section:", {
-    sectionId,
-    name,
-    identifier,
-    description,
-    category,
-    type,
-    price,
-    thumbnailUrl,
-    detailedFeatures,
-    tags,
-    imageGallery,
-    demoUrl,
-    isPopular,
-    isTrending,
-    isFeatured,
-  })
-
-  if (!name || !identifier || !type || !category) {
-    console.warn("⚠️ [ACTION] Missing required fields")
-    return json({ error: "Missing required fields." }, { status: 400 })
+  if (!name || !type || !category) {
+    return json({ error: "Missing required fields." }, { status: 400 });
   }
 
   try {
-    // Get the current section to check if file path needs updating
-    const currentSection = await SectionModel.findById(sectionId)
-    const oldFilePath = currentSection?.filePath
-    const newFilePath = `${type}/${identifier}.liquid`
-
-    const updated = await SectionModel.findByIdAndUpdate(sectionId, {
+    // Update the section
+    await SectionModel.findByIdAndUpdate(sectionId, {
       name,
-      identifier,
       description,
       detailedFeatures,
       category,
       tags,
       thumbnailUrl,
       imageGallery,
-      demoUrl,
       isFree: type === "free",
       price: type === "paid" ? price : 0,
-      filePath: newFilePath,
       isPopular,
       isTrending,
       isFeatured,
-    })
+    });
 
-    // Handle file path changes (move file if needed)
-    if (oldFilePath && oldFilePath !== newFilePath) {
-      const sectionsDir = path.join(process.cwd(), "app", "sections")
-      const oldFullPath = path.join(sectionsDir, oldFilePath)
-      const newFullPath = path.join(sectionsDir, newFilePath)
-
-      try {
-        // Ensure new directory exists
-        await fs.mkdir(path.dirname(newFullPath), { recursive: true })
-
-        // Move the file
-        await fs.rename(oldFullPath, newFullPath)
-        console.log(`✅ [ACTION] Moved file from ${oldFullPath} to ${newFullPath}`)
-      } catch (fileErr) {
-        console.warn(`⚠️ [ACTION] Could not move file: ${fileErr}`)
-      }
+    // Update the section content if custom code is provided
+    if (customCode.trim().length > 0) {
+      await SectionContentModel.findOneAndUpdate(
+        { sectionId },
+        { content: customCode },
+        { upsert: true }
+      );
     }
 
-    console.log("✅ [ACTION] Section updated:", updated)
-    return redirect("/app/admin/sections?success=1")
+    return redirect("/app/admin/sections");
   } catch (err: any) {
-    console.error("❌ [ACTION] Section update failed:", err)
-    return json({ error: err.message }, { status: 500 })
+    return json({ error: err.message }, { status: 500 });
   }
 }
 
 export default function EditSectionPage() {
-  const { section } = useLoaderData<typeof loader>()
-  console.log("🔥 Section loaded:", section)
-  const actionData = useActionData() as any
-  const navigate = useNavigate()
+  const { section, sectionContent } = useLoaderData<typeof loader>();
+  const actionData = useActionData() as any;
+  const navigate = useNavigate();
 
   // Form states
-  const [type, setType] = useState(section.isFree ? "free" : "paid")
-  const [name, setName] = useState(section.name || "")
-  const [identifier, setIdentifier] = useState(section.identifier || "")
-  const [description, setDescription] = useState(section.description || "")
-  const [category, setCategory] = useState(section.category || "")
-  const [price, setPrice] = useState(section.price?.toString() || "")
-  const [thumbnailUrl, setThumbnailUrl] = useState(section.thumbnailUrl || "")
+  const [type, setType] = useState(section.isFree ? "free" : "paid");
+  const [name, setName] = useState(section.name || "");
+  const [description, setDescription] = useState(section.description || "");
+  const [category, setCategory] = useState(section.category || "");
+  const [price, setPrice] = useState(section.price?.toString() || "");
+  const [thumbnailUrl, setThumbnailUrl] = useState(section.thumbnailUrl || "");
   const [detailedFeatures, setDetailedFeatures] = useState(
     section.detailedFeatures ? section.detailedFeatures.join("\n") : "",
-  )
-  const [tags, setTags] = useState(section.tags ? section.tags.join(", ") : "")
-  const [imageGallery, setImageGallery] = useState(section.imageGallery ? section.imageGallery.join(", ") : "")
-  const [demoUrl, setDemoUrl] = useState(section.demoUrl || "")
-  const [isPopular, setIsPopular] = useState(section.isPopular || false)
-  const [isTrending, setIsTrending] = useState(section.isTrending || false)
-  const [isFeatured, setIsFeatured] = useState(section.isFeatured || false)
-  const [file, setFile] = useState<File | null>(null)
-  const [uploading, setUploading] = useState(false)
+  );
+  const [tags, setTags] = useState(section.tags ? section.tags.join(", ") : "");
+  const [imageGallery, setImageGallery] = useState(
+    section.imageGallery ? section.imageGallery.join(", ") : "",
+  );
+  const [isPopular, setIsPopular] = useState(section.isPopular || false);
+  const [isTrending, setIsTrending] = useState(section.isTrending || false);
+  const [isFeatured, setIsFeatured] = useState(section.isFeatured || false);
+  const [file, setFile] = useState<File | null>(null);
+  const [uploading, setUploading] = useState(false);
+  const [customCode, setCustomCode] = useState(sectionContent?.content || "");
 
   const categoryOptions = [
     { label: "Select category...", value: "" },
@@ -194,33 +168,29 @@ export default function EditSectionPage() {
     { label: "Scrolling", value: "scrolling" },
     { label: "Featured", value: "featured" },
     { label: "Other", value: "other" },
-  ]
+  ];
 
   const handleDrop = async (_: any, acceptedFiles: File[]) => {
-    const uploadedFile = acceptedFiles[0]
-    setFile(uploadedFile)
-    setUploading(true)
+    const uploadedFile = acceptedFiles[0];
+    setFile(uploadedFile);
+    setUploading(true);
 
-    console.log("📸 [UPLOAD] Uploading file:", uploadedFile.name)
-
-    const data = new FormData()
-    data.append("file", uploadedFile)
+    const data = new FormData();
+    data.append("file", uploadedFile);
 
     try {
       const res = await fetch("/api/upload", {
         method: "POST",
         body: data,
-      })
+      });
 
-      const json = await res.json()
-      console.log("✅ [UPLOAD] Uploaded URL:", json.url)
-      setThumbnailUrl(json.url)
+      const json = await res.json();
+      setThumbnailUrl(json.url);
     } catch (error) {
-      console.error("❌ [UPLOAD] Upload failed:", error)
     } finally {
-      setUploading(false)
+      setUploading(false);
     }
-  }
+  };
 
   return (
     <Frame>
@@ -247,24 +217,14 @@ export default function EditSectionPage() {
 
                 <Form method="post">
                   <FormLayout>
-                    <FormLayout.Group>
-                      <TextField
-                        label="Name"
-                        name="name"
-                        value={name}
-                        onChange={setName}
-                        requiredIndicator
-                        autoComplete="off"
-                      />
-                      <TextField
-                        label="Identifier (e.g. hero-banner-v2)"
-                        name="identifier"
-                        value={identifier}
-                        onChange={setIdentifier}
-                        autoComplete="off"
-                        requiredIndicator
-                      />
-                    </FormLayout.Group>
+                    <TextField
+                      label="Name"
+                      name="name"
+                      value={name}
+                      onChange={setName}
+                      requiredIndicator
+                      autoComplete="off"
+                    />
 
                     <FormLayout.Group>
                       <Select
@@ -317,36 +277,144 @@ export default function EditSectionPage() {
 
                     <DropZone onDrop={handleDrop} accept="image/*" type="image">
                       {file ? (
-                        <div style={{ display: "flex", justifyContent: "center", padding: "16px" }}>
-                          <Thumbnail size="large" alt="Thumbnail preview" source={URL.createObjectURL(file)} />
+                        <div
+                          style={{
+                            display: "flex",
+                            justifyContent: "center",
+                            padding: "16px",
+                          }}
+                        >
+                          <Thumbnail
+                            size="large"
+                            alt="Thumbnail preview"
+                            source={URL.createObjectURL(file)}
+                          />
                         </div>
                       ) : thumbnailUrl ? (
-                        <div style={{ display: "flex", justifyContent: "center", padding: "16px" }}>
-                          <Thumbnail size="large" alt="Current thumbnail" source={thumbnailUrl} />
+                        <div
+                          style={{
+                            display: "flex",
+                            justifyContent: "center",
+                            padding: "16px",
+                          }}
+                        >
+                          <Thumbnail
+                            size="large"
+                            alt="Current thumbnail"
+                            source={thumbnailUrl}
+                          />
                         </div>
                       ) : (
-                        <DropZone.FileUpload actionTitle="Upload thumbnail" actionHint="Accepts .jpg, .png, .gif" />
+                        <DropZone.FileUpload
+                          actionTitle="Upload thumbnail"
+                          actionHint="Accepts .jpg, .png, .gif"
+                        />
                       )}
                     </DropZone>
-                    <input type="hidden" name="thumbnailUrl" value={thumbnailUrl} />
+                    <input
+                      type="hidden"
+                      name="thumbnailUrl"
+                      value={thumbnailUrl}
+                    />
 
-                    <TextField
-                      label="Additional Images (comma separated URLs)"
+                    <DropZone
+                      onDrop={async (_dropFiles, acceptedFiles) => {
+                        if (acceptedFiles.length === 0) return;
+                        setUploading(true);
+                        const uploadedUrls: string[] = [];
+                        for (const file of acceptedFiles) {
+                          const data = new FormData();
+                          data.append("file", file);
+                          try {
+                            const res = await fetch("/api/upload", {
+                              method: "POST",
+                              body: data,
+                            });
+                            const json = await res.json();
+                            uploadedUrls.push(json.url);
+                          } catch (error) {
+                          }
+                        }
+                        // Merge with any existing images
+                        const existing = imageGallery
+                          ? imageGallery.split(",").map((url: string) => url.trim())
+                          : [];
+                        const combined = [...existing, ...uploadedUrls];
+                        setImageGallery(combined.join(", "));
+                        setUploading(false);
+                      }}
+                      accept="image/*"
+                      allowMultiple
+                      type="image"
+                    >
+                      <DropZone.FileUpload
+                        actionTitle="Upload Additional Images"
+                        actionHint="You can select multiple images"
+                      />
+                    </DropZone>
+                    <input
+                      type="hidden"
                       name="imageGallery"
                       value={imageGallery}
-                      onChange={setImageGallery}
-                      autoComplete="off"
-                      helpText="Enter image URLs separated by commas for gallery"
                     />
-
-                    <TextField
-                      label="Demo Store URL"
-                      name="demoUrl"
-                      value={demoUrl}
-                      onChange={setDemoUrl}
-                      autoComplete="off"
-                      helpText="Link to a demo store showing this section"
-                    />
+                    {imageGallery && (
+                      <BlockStack gap="200">
+                        <Text as="h4" variant="headingSm">
+                          Gallery Images:
+                        </Text>
+                        <InlineStack gap="100">
+                          {imageGallery
+                            .split(",")
+                            .map((url: string) => url.trim())
+                            .filter((url: string) => Boolean(url))
+                            .map((url: string, index: number, arr: string[]) => (
+                              <div key={index} style={{ position: "relative", display: "inline-block" }}>
+                                <img
+                                  src={url}
+                                  alt={`Gallery ${index}`}
+                                  style={{
+                                    width: "80px",
+                                    height: "60px",
+                                    objectFit: "cover",
+                                    borderRadius: "6px",
+                                    border: "1px solid #eee",
+                                    background: "#fafafa",
+                                  }}
+                                />
+                                <button
+                                  type="button"
+                                  onClick={() => {
+                                    // Remove the image at this index
+                                    const newGallery = arr.filter((_: string, i: number) => i !== index);
+                                    setImageGallery(newGallery.join(", "));
+                                  }}
+                                  style={{
+                                    position: "absolute",
+                                    top: "-8px",
+                                    right: "-8px",
+                                    background: "#fff",
+                                    border: "1px solid #ccc",
+                                    borderRadius: "50%",
+                                    width: "22px",
+                                    height: "22px",
+                                    cursor: "pointer",
+                                    display: "flex",
+                                    alignItems: "center",
+                                    justifyContent: "center",
+                                    fontWeight: "bold",
+                                    color: "#d32f2f",
+                                    boxShadow: "0 1px 4px rgba(0,0,0,0.08)",
+                                    zIndex: 2,
+                                  }}
+                                  aria-label="Remove image"
+                                >
+                                  &minus;
+                                </button>
+                              </div>
+                            ))}
+                        </InlineStack>
+                      </BlockStack>
+                    )}
 
                     {type === "paid" && (
                       <TextField
@@ -359,11 +427,26 @@ export default function EditSectionPage() {
                       />
                     )}
 
+                    <TextField
+                      label="Custom Liquid Code"
+                      name="customCode"
+                      value={customCode}
+                      onChange={setCustomCode}
+                      multiline={10}
+                      autoComplete="off"
+                      helpText="Paste the full Liquid code for this section"
+                    />
+
                     <BlockStack gap="300">
                       <Text as="h3" variant="headingMd">
                         Section Flags
                       </Text>
-                      <Checkbox label="Popular section" checked={isPopular} onChange={setIsPopular} name="isPopular" />
+                      <Checkbox
+                        label="Popular section"
+                        checked={isPopular}
+                        onChange={setIsPopular}
+                        name="isPopular"
+                      />
                       <Checkbox
                         label="Trending section"
                         checked={isTrending}
@@ -378,7 +461,12 @@ export default function EditSectionPage() {
                       />
                     </BlockStack>
 
-                    <Button submit variant="primary" loading={uploading} disabled={uploading}>
+                    <Button
+                      submit
+                      variant="primary"
+                      loading={uploading}
+                      disabled={uploading}
+                    >
                       {uploading ? "Uploading..." : "Update Section"}
                     </Button>
                   </FormLayout>
@@ -394,10 +482,11 @@ export default function EditSectionPage() {
                 </Text>
                 <InlineStack gap="200">
                   <Text as="p">
-                    <strong>File Path:</strong> {section.filePath}
+                    <strong>Section ID:</strong> {section._id}
                   </Text>
                   <Text as="p">
-                    <strong>Created:</strong> {new Date(section.createdAt).toLocaleDateString()}
+                    <strong>Created:</strong>{" "}
+                    {new Date(section.createdAt).toLocaleDateString()}
                   </Text>
                 </InlineStack>
                 {section.tags && section.tags.length > 0 && (
@@ -418,5 +507,5 @@ export default function EditSectionPage() {
         </Layout>
       </Page>
     </Frame>
-  )
+  );
 }

@@ -6,6 +6,8 @@ import {
   shopifyApp,
 } from "@shopify/shopify-app-remix/server";
 import { MongoDBSessionStorage } from "@shopify/shopify-app-session-storage-mongodb";
+import { connectToDB } from "./db.server";
+import UserModel from "./models/userModel";
 import "dotenv/config";
 
 const URI = new URL(process.env.MONGODB_URI!);
@@ -26,17 +28,37 @@ const shopify = shopifyApp({
   ...(process.env.SHOP_CUSTOM_DOMAIN
     ? { customShopDomains: [process.env.SHOP_CUSTOM_DOMAIN] }
     : {}),
-
   webhooks: {
     APP_PURCHASES_ONE_TIME_UPDATE: {
       deliveryMethod: DeliveryMethod.Http,
       callbackUrl: "/webhooks/app/purchase-update",
     },
   },
-
   hooks: {
     afterAuth: async ({ session }) => {
-      await shopify.registerWebhooks({ session });
+      try {
+        await shopify.registerWebhooks({ session });
+
+        await connectToDB();
+
+        let user = await UserModel.findOne({ shop: session.shop });
+
+        if (!user) {
+          user = await UserModel.create({
+            shop: session.shop,
+            accessToken: session.accessToken,
+            scope: session.scope,
+            createdAt: new Date(),
+            updatedAt: new Date(),
+          });
+        } else {
+          user.accessToken = session.accessToken;
+          user.scope = session.scope;
+          user.updatedAt = new Date();
+          await user.save();
+        }
+      } catch (error) {
+      }
     },
   },
 });

@@ -1,49 +1,106 @@
-"use client"
-
-import { json, type LoaderFunctionArgs, type ActionFunctionArgs } from "@remix-run/node"
-import { useLoaderData, Form, useActionData, useNavigation } from "@remix-run/react"
-import { authenticate } from "../shopify.server"
-import fs from "fs/promises"
-import path from "path"
+"use client";
 import {
   Page,
   Layout,
   Card,
-  FormLayout,
-  Select,
-  Button,
-  Banner,
-  Text,
-  List,
-  Collapsible,
-  TextContainer,
-  InlineStack,
-  Badge,
-  Divider,
-  CalloutCard,
   BlockStack,
-} from "@shopify/polaris"
-import { useState } from "react"
+  InlineStack,
+  Text,
+  Button,
+  Badge,
+  Icon,
+  Popover,
+  ActionList,
+  Toast,
+  Frame,
+} from "@shopify/polaris";
+import {
+  ViewIcon,
+  XIcon,
+  ExternalIcon,
+  CreditCardIcon,
+  SettingsIcon,
+} from "@shopify/polaris-icons";
+import {
+  json,
+  type LoaderFunctionArgs,
+  type ActionFunctionArgs,
+} from "@remix-run/node";
+import {
+  useLoaderData,
+  useActionData,
+  useNavigation,
+  useSubmit,
+  NavLink,
+  Link,
+} from "@remix-run/react";
+import { connectToDB } from "app/db.server";
+import UserModel from "app/models/userModel";
+import PurchaseModel from "app/models/PurchaseModel";
+import SectionModel from "app/models/SectionModel";
+import SectionContentModel from "app/models/sectionContentModel";
+import { authenticate } from "app/shopify.server";
+import { useState, useEffect } from "react";
 
-// === Types ===
 interface Theme {
-  id: string
-  name: string
-  role: string
+  id: string;
+  name: string;
+  role: string;
 }
 
-interface ActionData {
-  success?: boolean
-  message?: string
-  error?: string
+interface Section {
+  _id: string;
+  name: string;
+  description: string;
+  thumbnailUrl: string;
+  isFree: boolean;
+  category: string;
+  isPopular: boolean;
+  isTrending: boolean;
+  price: number;
 }
 
-// === Loader ===
 export async function loader({ request }: LoaderFunctionArgs) {
-  try {
-    const { admin } = await authenticate.admin(request)
+  await connectToDB();
 
-    // Fetch themes via GraphQL
+  const { admin } = await authenticate.admin(request);
+  const { session } = await authenticate.admin(request);
+  const shop = session.shop;
+
+  const user = await UserModel.findOne({ shop });
+
+  if (!user) {
+    return json({
+      sections: [],
+      themes: [],
+      freeSections: [],
+      paidSections: [],
+    });
+  }
+
+  // Fetch purchased sections
+
+  const purchases = await PurchaseModel.find({ userId: user._id })
+    .populate("sectionId")
+    .lean();
+  const sections = purchases.map((purchase: any) => ({
+    _id: purchase.sectionId._id.toString(),
+    name: purchase.sectionId.name,
+    description: purchase.sectionId.description,
+    thumbnailUrl: purchase.sectionId.thumbnailUrl,
+    isFree: purchase.sectionId.isFree,
+    category: purchase.sectionId.category,
+    isPopular: purchase.sectionId.isPopular,
+    isTrending: purchase.sectionId.isTrending,
+    price: purchase.sectionId.price,
+  }));
+
+  const allSections = sections;
+
+  // Fetch themes via GraphQL
+  let themes: Theme[] = [];
+
+  try {
     const response = await admin.graphql(`
       {
         themes(first: 50) {
@@ -52,138 +109,50 @@ export async function loader({ request }: LoaderFunctionArgs) {
               id
               name
               role
-              createdAt
-              updatedAt
             }
           }
         }
       }
-    `)
+    `);
 
-    const jsonData = (await response.json()) as any
+    const jsonData = (await response.json()) as any;
 
     if (jsonData.errors) {
-      console.error("GraphQL errors:", jsonData.errors)
-      throw new Error(`GraphQL Error: ${JSON.stringify(jsonData.errors)}`)
+    } else {
+      themes = jsonData.data.themes.edges.map((edge: any) => ({
+        id: edge.node.id,
+        name: edge.node.name,
+        role: edge.node.role,
+      }));
     }
+  } catch (error) {}
 
-    const themes = jsonData.data.themes.edges.map((edge: any) => edge.node)
-    console.log("Loaded themes:", themes)
-
-    // Read local section files from app/sections
-    // Fix: Use process.cwd() for more reliable path resolution
-    const sectionsDir = path.join(process.cwd(), "app", "sections")
-    console.log("Looking for sections in:", sectionsDir)
-
-    let sectionFiles: string[] = []
-    try {
-      // Check if directory exists first
-      await fs.access(sectionsDir)
-      const files = await fs.readdir(sectionsDir)
-      sectionFiles = files.filter((file) => file.endsWith(".liquid"))
-      console.log("Found section files:", sectionFiles)
-    } catch (err) {
-      console.warn("Sections directory not found or empty:", err)
-      // Create the directory if it doesn't exist
-      try {
-        await fs.mkdir(sectionsDir, { recursive: true })
-        console.log("Created sections directory:", sectionsDir)
-      } catch (createErr) {
-        console.error("Failed to create sections directory:", createErr)
-      }
-    }
-
-    return json({ themes, sectionFiles, sectionsDir })
-  } catch (error) {
-    console.error("Loader error:", error)
-    throw new Response("Failed to load themes and sections", { status: 500 })
-  }
+  return json({ sections, themes, allSections });
 }
 
-// === Action ===
 export async function action({ request }: ActionFunctionArgs) {
-  console.log("=== Action started ===")
+  const formData = await request.formData();
+  const sectionId = formData.get("sectionId") as string;
+  const themeId = formData.get("themeId") as string;
+
+  if (!sectionId || !themeId) {
+    return json({ error: "Missing required parameters" }, { status: 400 });
+  }
 
   try {
-    const formData = await request.formData()
-    const sectionName = formData.get("section")
-    const themeId = formData.get("themeId")
-    const themeName = formData.get("themeName")
+    await connectToDB();
 
-    console.log("Form data received:", { sectionName, themeId, themeName })
+    const { admin } = await authenticate.admin(request);
 
-    // Validation
-    if (typeof sectionName !== "string" || typeof themeId !== "string") {
-      console.error("Missing required fields")
-      return json<ActionData>(
-        {
-          error: "Missing required fields: section name and theme ID are required",
-        },
-        { status: 400 },
-      )
+    // Get section content from database
+    const sectionContent = await SectionContentModel.findOne({ sectionId });
+    if (!sectionContent) {
+      return json({ error: "Section content not found" }, { status: 404 });
     }
 
-    // Fix: More flexible validation - allow selection of .liquid files
-    if (!sectionName || sectionName === "") {
-      return json<ActionData>(
-        {
-          error: "Please select a section file",
-        },
-        { status: 400 },
-      )
-    }
+    const content = sectionContent.content;
 
-    if (!sectionName.endsWith(".liquid")) {
-      console.error("Invalid file extension")
-      return json<ActionData>(
-        {
-          error: "Invalid section file: must be a .liquid file",
-        },
-        { status: 400 },
-      )
-    }
-
-    const { admin, session } = await authenticate.admin(request)
-
-    if (!session) {
-      console.error("No session found")
-      return json<ActionData>(
-        {
-          error: "Authentication failed: user session not found",
-        },
-        { status: 401 },
-      )
-    }
-
-    console.log("Session info:", { shop: session.shop, hasAccessToken: !!session.accessToken })
-
-    // Fix: Use consistent path resolution
-    const filePath = path.join(process.cwd(), "app", "sections", sectionName)
-    console.log("Reading file from:", filePath)
-
-    let content: string
-    try {
-      content = await fs.readFile(filePath, "utf-8")
-      console.log(`Successfully read section file: ${sectionName}, length: ${content.length}`)
-    } catch (err) {
-      console.error(`Failed to read section file: ${sectionName}`, err)
-      return json<ActionData>(
-        {
-          error: `Section file not found: ${sectionName}. Make sure the file exists in app/sections/`,
-        },
-        { status: 404 },
-      )
-    }
-
-    if (!content.trim()) {
-      console.error("Section file is empty")
-      return json<ActionData>(
-        {
-          error: "Section file is empty",
-        },
-        { status: 400 },
-      )
-    }
+    // Upload section to theme using GraphQL
 
     const mutation = `
       mutation themeFilesUpsert($themeId: ID!, $files: [OnlineStoreThemeFilesUpsertFileInput!]!) {
@@ -197,299 +166,415 @@ export async function action({ request }: ActionFunctionArgs) {
           }
         }
       }
-    `
+    `;
+
+    // Get section name for filename
+    const section = await SectionModel.findById(sectionId);
+    if (!section) {
+      return json({ error: "Section not found" }, { status: 404 });
+    }
 
     const variables = {
       themeId: themeId,
       files: [
         {
-          filename: `sections/${sectionName}`,
+          filename: `sections/${section.name.toLowerCase().replace(/\s+/g, "-")}.liquid`,
           body: {
             type: "TEXT",
             value: content,
           },
         },
       ],
-    }
+    };
 
-    console.log("Uploading via GraphQL themeFilesUpsert:", {
-      themeId,
-      filename: `sections/${sectionName}`,
-      contentLength: content.length,
-    })
-
-    const response = await admin.graphql(mutation, { variables })
-    const responseData = (await response.json()) as any
-
-    console.log("GraphQL response:", JSON.stringify(responseData, null, 2))
+    const response = await admin.graphql(mutation, { variables });
+    const responseData = (await response.json()) as any;
 
     if (responseData.errors) {
-      console.error("GraphQL errors:", responseData.errors)
-      return json<ActionData>(
-        {
-          error: `GraphQL Error: ${JSON.stringify(responseData.errors)}`,
-        },
+      return json(
+        { error: `GraphQL Error: ${JSON.stringify(responseData.errors)}` },
         { status: 400 },
-      )
+      );
     }
 
-    const { upsertedThemeFiles, userErrors } = responseData.data.themeFilesUpsert
-
-    if (userErrors && userErrors.length > 0) {
-      console.error("User errors:", userErrors)
-      return json<ActionData>(
+    if (responseData.data.themeFilesUpsert.userErrors.length > 0) {
+      return json(
         {
-          error: `Upload errors: ${JSON.stringify(userErrors)}`,
+          error: `Upload Error: ${JSON.stringify(responseData.data.themeFilesUpsert.userErrors)}`,
         },
         { status: 400 },
-      )
+      );
     }
 
-    console.log("Section file uploaded successfully:", upsertedThemeFiles)
+    // Update download count
 
-    return json<ActionData>({
+    await SectionModel.findByIdAndUpdate(sectionId, {
+      $inc: { downloadCount: 1 },
+    });
+
+    return json({
       success: true,
-      message: `Successfully uploaded "${sectionName}" to "${themeName || "theme"}"`,
-    })
-  } catch (error) {
-    console.error("Action error:", error)
-    return json<ActionData>(
-      {
-        error: `Unexpected error: ${error instanceof Error ? error.message : "Unknown error"}`,
-      },
+      message: "Section added to theme successfully",
+    });
+  } catch (error: any) {
+    return json(
+      { error: `Internal server error: ${error.message}` },
       { status: 500 },
-    )
+    );
   }
 }
 
-// === UI Component ===
-export default function ThemesPage() {
-  const { themes, sectionFiles, sectionsDir } = useLoaderData<typeof loader>()
-  const actionData = useActionData<ActionData>()
-  const navigation = useNavigation()
-  const isSubmitting = navigation.state === "submitting"
-  const [debugOpen, setDebugOpen] = useState(false)
+export default function MySectionsPage() {
+  const { sections, themes, allSections } = useLoaderData<
+    typeof loader
+  >() as any;
+  const actionData = useActionData() as any;
+  const navigation = useNavigation();
+  const submit = useSubmit();
+  const isSubmitting = navigation.state === "submitting";
 
-  // Add this after the existing useState declarations
-  const [selectedSections, setSelectedSections] = useState<{ [key: string]: string }>({})
+  const [popoverActive, setPopoverActive] = useState<{
+    [key: string]: boolean;
+  }>({});
+  const [showSuccessToast, setShowSuccessToast] = useState(false);
+  const [showErrorBanner, setShowErrorBanner] = useState(true);
+  const [loadingStates, setLoadingStates] = useState<{
+    [key: string]: boolean;
+  }>({});
 
-  const handleSectionChange = (themeId: string, value: string) => {
-    setSelectedSections((prev) => ({
+  // Show success toast when action succeeds
+  useEffect(() => {
+    if (actionData?.success) {
+      setShowSuccessToast(true);
+    }
+  }, [actionData]);
+
+  const togglePopover = (sectionId: string) => {
+    setPopoverActive((prev) => ({
       ...prev,
-      [themeId]: value,
-    }))
-  }
+      [sectionId]: !prev[sectionId],
+    }));
+  };
 
-  const sectionOptions = [
-    { label: "Choose a section file...", value: "" },
-    ...sectionFiles.map((file: string) => ({
-      label: file,
-      value: file,
-    })),
-  ]
+  const handleThemeSelect = (
+    sectionId: string,
+    themeId: string,
+    themeName: string,
+    section: Section,
+  ) => {
+    // Close popover
+    setPopoverActive((prev) => ({
+      ...prev,
+      [sectionId]: false,
+    }));
 
-  console.log("Section options:", sectionOptions)
-  console.log("Selected sections:", selectedSections)
+    // Set loading state
+    setLoadingStates((prev) => ({
+      ...prev,
+      [sectionId]: true,
+    }));
 
-  return (
-    <Page title="Theme Manager" subtitle="Upload section files to your Shopify themes">
-      <Layout>
-        <Layout.Section>
-          {/* Success/Error Messages */}
-          {actionData && (
-            <BlockStack gap="400">
-              {actionData.success && actionData.message && (
-                <Banner tone="success" title="Upload Successful">
-                  <p>{actionData.message}</p>
-                </Banner>
-              )}
-              {actionData.error && (
-                <Banner tone="critical" title="Upload Failed">
-                  <p>{actionData.error}</p>
-                </Banner>
-              )}
-            </BlockStack>
-          )}
+    // Submit form automatically
+    const formData = new FormData();
+    formData.append("sectionId", sectionId);
+    formData.append("themeId", themeId);
 
-          {/* Section Files Info */}
-          {sectionFiles.length > 0 ? (
-            <Card>
-              <BlockStack gap="300">
-                <InlineStack align="space-between">
-                  <Text variant="headingMd" as="h3">
-                    Available Section Files
-                  </Text>
-                  <Badge tone="info">{sectionFiles?.length as any}</Badge>
-                </InlineStack>
-                <List type="bullet">
-                  {sectionFiles.map((file: string) => (
-                    <List.Item key={file}>{file}</List.Item>
-                  ))}
-                </List>
-              </BlockStack>
-            </Card>
-          ) : (
-            <Card>
-              <BlockStack gap="300">
-                <Text variant="headingMd" as="h3">
-                  No Section Files Found
-                </Text>
-                <Text as="p" tone="subdued">
-                  Add .liquid files to the app/sections directory to get started.
-                </Text>
-                <Text as="p" tone="subdued">
-                  Looking in: {sectionsDir}
-                </Text>
-                <CalloutCard
-                  title="Create your first section file"
-                  illustration="/placeholder.svg?height=60&width=60"
-                  primaryAction={{
-                    content: "Learn more",
-                    url: "#instructions",
+    submit(formData, { method: "post" });
+  };
+
+  // Reset loading states when submission completes
+  useEffect(() => {
+    if (!isSubmitting) {
+      setLoadingStates({});
+    }
+  }, [isSubmitting]);
+
+  const renderSectionCard = (section: Section) => {
+    const isLoading = loadingStates[section._id] || false;
+
+    return (
+      <div key={section._id} style={{ width: "100%", maxWidth: "300px" }}>
+        <Card padding="400">
+          <BlockStack gap="200">
+            {/* Large Custom Image */}
+            <div
+              style={{
+                width: "100%",
+                height: "150px",
+                backgroundColor: "#f6f6f7",
+                borderRadius: "8px",
+                overflow: "hidden",
+                display: "flex",
+                alignItems: "center",
+                justifyContent: "center",
+              }}
+            >
+              {section.thumbnailUrl ? (
+                <img
+                  src={section.thumbnailUrl || "/placeholder.svg"}
+                  alt={section.name}
+                  style={{
+                    width: "100%",
+                    height: "100%",
+                    objectFit: "cover",
+                  }}
+                />
+              ) : (
+                <div
+                  style={{
+                    width: "100%",
+                    height: "100%",
+                    backgroundColor: "#e1e3e5",
+                    display: "flex",
+                    alignItems: "center",
+                    justifyContent: "center",
+                    color: "#6d7175",
                   }}
                 >
-                  <p>
-                    Create a .liquid file in the app/sections directory. For example: app/sections/hero-banner.liquid
-                  </p>
-                </CalloutCard>
-              </BlockStack>
-            </Card>
-          )}
+                  <Text as="span" variant="bodyMd">
+                    No Preview
+                  </Text>
+                </div>
+              )}
+            </div>
 
-          {/* Debug Info */}
-          {process.env.NODE_ENV === "development" && (
-            <Card>
-              <Collapsible
-                open={debugOpen}
-                id="debug-collapsible"
-                transition={{ duration: "150ms", timingFunction: "ease" }}
-                expandOnPrint
+            <InlineStack gap="200" align="space-between">
+              <Text as="h3" variant="headingMd">
+                {section.name}
+              </Text>
+            </InlineStack>
+
+            <InlineStack gap="200" align="start" blockAlign="center">
+              <Popover
+                active={popoverActive[section._id] || false}
+                activator={
+                  <Button
+                    variant="primary"
+                    disclosure
+                    onClick={() => togglePopover(section._id)}
+                    disabled={themes.length === 0 || isLoading}
+                    loading={isLoading}
+                    fullWidth={true}
+                  >
+                    {isLoading ? "Adding..." : "Add to theme"}
+                  </Button>
+                }
+                onClose={() => togglePopover(section._id)}
               >
-                <BlockStack gap="300">
-                  <Text variant="headingMd" as="h3">
-                    Debug Information
-                  </Text>
-                  <InlineStack gap="400">
-                    <Text as="p">Themes found: {themes.length}</Text>
-                    <Text as="p">Section files found: {sectionFiles.length}</Text>
-                  </InlineStack>
-                  <Text as="p">Sections directory: {sectionsDir}</Text>
-                  <TextContainer>
-                    <Text variant="headingSm" as="h4">
-                      Theme Details:
-                    </Text>
-                    <pre style={{ fontSize: "12px", overflow: "auto" }}>{JSON.stringify(themes, null, 2)}</pre>
-                  </TextContainer>
-                </BlockStack>
-              </Collapsible>
-              <div style={{ paddingTop: "8px" }}>
-                <Button
-                  variant="plain"
-                  onClick={() => setDebugOpen(!debugOpen)}
-                  ariaExpanded={debugOpen}
-                  ariaControls="debug-collapsible"
-                >
-                  {debugOpen ? "Hide" : "Show"} Debug Info
-                </Button>
-              </div>
-            </Card>
-          )}
+                <ActionList
+                  items={themes.map((theme: any) => ({
+                    content: `${theme.name} ${theme.role === "MAIN" ? "(Live)" : ""}`,
+                    onAction: () =>
+                      handleThemeSelect(
+                        section._id,
+                        theme.id,
+                        theme.name,
+                        section,
+                      ),
+                  }))}
+                />
+              </Popover>
 
-          {/* Themes List */}
-          {themes.length === 0 ? (
-            <Card>
-              <BlockStack gap="300">
-                <Text variant="headingMd" as="h3">
-                  No Themes Found
-                </Text>
-                <Text as="p">No themes are available in your Shopify store.</Text>
-              </BlockStack>
-            </Card>
-          ) : (
-            <Card>
-              <BlockStack gap="400">
-                <InlineStack align="space-between">
-                  <Text variant="headingLg" as="h2">
-                    Themes
+              <Link to={`/app/my-section/preview/${section._id}`}>
+                <Icon source={ViewIcon} tone="base" />
+              </Link>
+            </InlineStack>
+          </BlockStack>
+        </Card>
+      </div>
+    );
+  };
+
+  // Grid container styles
+  const gridStyles = {
+    display: "flex",
+    gap: "20px",
+    width: "100%",
+  };
+
+  const toastMarkup = showSuccessToast ? (
+    <Toast
+      content="Section added to theme successfully!"
+      onDismiss={() => setShowSuccessToast(false)}
+    />
+  ) : null;
+
+  return (
+    <Frame>
+      <Page
+        fullWidth
+        title="My sections"
+        subtitle="The sections you own will show here."
+      >
+        <Layout>
+          {/* Error Banner (only show errors, dismissible) */}
+          {actionData?.error && showErrorBanner && (
+            <Layout.Section>
+              <Card padding="400">
+                <InlineStack align="space-between" blockAlign="start">
+                  <Text as="p" tone="critical">
+                    {actionData.error}
                   </Text>
-                  <Badge tone="info">{themes.length}</Badge>
+                  <Button
+                    icon={XIcon}
+                    variant="plain"
+                    onClick={() => setShowErrorBanner(false)}
+                    accessibilityLabel="Dismiss error"
+                  />
                 </InlineStack>
-
-                {themes.map((theme: Theme, index: number) => (
-                  <div key={theme.id}>
-                    <Card>
-                      <BlockStack gap="400">
-                        <InlineStack align="space-between">
-                          <Text variant="headingMd" as="h3">
-                            {theme.name}
-                          </Text>
-                          <Badge tone={theme.role === "main" ? "success" : "info"}>{theme.role}</Badge>
-                        </InlineStack>
-
-                        <Text as="p" tone="subdued">
-                          Theme ID: {theme.id}
-                        </Text>
-
-                        {sectionFiles.length === 0 ? (
-                          <CalloutCard
-                            title="No section files available"
-                            illustration="/placeholder.svg?height=60&width=60"
-                            primaryAction={{
-                              content: "Learn more",
-                              url: "#instructions",
-                            }}
-                          >
-                            <p>Add .liquid files to the app/sections directory to get started.</p>
-                          </CalloutCard>
-                        ) : (
-                          <Form method="post">
-                            <input type="hidden" name="themeId" value={theme.id} />
-                            <input type="hidden" name="themeName" value={theme.name} />
-
-                            <FormLayout>
-                              <Select
-                                label="Select Section File"
-                                options={sectionOptions}
-                                name="section"
-                                value={selectedSections[theme.id] || ""}
-                                onChange={(value) => handleSectionChange(theme.id, value)}
-                                disabled={isSubmitting}
-                                requiredIndicator
-                              />
-
-                              <Button submit variant="primary" loading={isSubmitting} disabled={isSubmitting}>
-                                {isSubmitting ? "Uploading..." : "Upload to Theme"}
-                              </Button>
-                            </FormLayout>
-                          </Form>
-                        )}
-                      </BlockStack>
-                    </Card>
-                    {index < themes.length - 1 && <Divider />}
-                  </div>
-                ))}
-              </BlockStack>
-            </Card>
+              </Card>
+            </Layout.Section>
           )}
 
-          {/* Instructions */}
-          <Card>
-            <BlockStack gap="300">
-              <Text variant="headingMd" as="h3">
-                Instructions
-              </Text>
-              <List type="number">
-                <List.Item>Place your .liquid section files in the app/sections directory</List.Item>
-                <List.Item>Select a theme and choose the section file you want to upload</List.Item>
-                <List.Item>Click "Upload to Theme" to add the section to your Shopify theme</List.Item>
-              </List>
-              <Text as="p" tone="subdued">
-                Example section file path: app/sections/hero-banner.liquid
-              </Text>
-            </BlockStack>
-          </Card>
-        </Layout.Section>
-      </Layout>
-    </Page>
-  )
+          {/* Welcome Section with Explore Button */}
+          <Layout.Section>
+            <Card padding="400">
+              <BlockStack gap="300">
+                <InlineStack align="space-between" blockAlign="center">
+                  <BlockStack gap="200">
+                    <Text as="h3" variant="headingMd">
+                      Welcome to Sections Stack
+                    </Text>
+                    <Text as="p" tone="subdued">
+                      Manage and add your purchased sections to any theme in
+                      your store.
+                    </Text>
+                  </BlockStack>
+                  <Button
+                    variant="primary"
+                    url="/app/sections/store"
+                    icon={ExternalIcon}
+                  >
+                    Explore Sections
+                  </Button>
+                </InlineStack>
+              </BlockStack>
+            </Card>
+          </Layout.Section>
+
+          {sections.length === 0 ? (
+            /* Empty State */
+            <Layout.Section>
+              <Card padding="600">
+                <BlockStack gap="400" align="center">
+                  <Text as="h2" variant="headingLg" alignment="center">
+                    A better way to customize your Shopify store
+                  </Text>
+                  <Text as="p" alignment="center" tone="subdued">
+                    Sections Stack let's you buy beautifully designed, pre-made
+                    Shopify sections. All sections are plug-n-play ready to be
+                    customized in the theme editor. Works with Online Store 2.0
+                    (add to any page).
+                  </Text>
+
+                  {/* Steps Illustration */}
+                  <div style={{ margin: "40px 0" }}>
+                    <InlineStack gap="600" align="center">
+                      <BlockStack gap="200" align="center">
+                        <div
+                          style={{
+                            width: "30px",
+                            height: "30px",
+                            backgroundColor: "#f6f6f7",
+                            borderRadius: "50%",
+                            display: "flex",
+                            alignItems: "center",
+                            justifyContent: "center",
+                            margin: "0 auto",
+                          }}
+                        >
+                          <Icon source={ViewIcon} tone="base" />
+                        </div>
+                        <Text as="h4" variant="headingSm" alignment="center">
+                          Step 1: Browse and find sections
+                        </Text>
+                        <Text as="p" alignment="center" tone="subdued">
+                          Find the sections you need & see <br></br> the live
+                          demo store.
+                        </Text>
+                      </BlockStack>
+
+                      <BlockStack gap="200" align="center">
+                        <div
+                          style={{
+                            width: "30px",
+                            height: "30px",
+                            backgroundColor: "#f6f6f7",
+                            borderRadius: "50%",
+                            display: "flex",
+                            alignItems: "center",
+                            justifyContent: "center",
+                            margin: "0 auto",
+                          }}
+                        >
+                          <Text as="span" variant="headingMd">
+                            <Icon source={CreditCardIcon} tone="base" />
+                          </Text>
+                        </div>
+                        <Text as="h4" variant="headingSm" alignment="center">
+                          Step 2: Purchase sections
+                        </Text>
+                        <Text as="p" alignment="center" tone="subdued">
+                          Purchase sections & own it forever on your store.
+                          <br></br> One time fee. Some sections are free.
+                        </Text>
+                      </BlockStack>
+
+                      <BlockStack gap="200" align="center">
+                        <div
+                          style={{
+                            width: "30px",
+                            height: "30px",
+                            backgroundColor: "#f6f6f7",
+                            borderRadius: "50%",
+                            display: "flex",
+                            alignItems: "center",
+                            justifyContent: "center",
+                            margin: "0 auto",
+                          }}
+                        >
+                          <Text as="span" variant="headingMd">
+                            <Icon source={SettingsIcon} tone="base" />
+                          </Text>
+                        </div>
+                        <Text as="h4" variant="headingSm" alignment="center">
+                          Step 3: Add and customise
+                        </Text>
+                        <Text as="p" alignment="center" tone="subdued">
+                          Time to add the section to your theme & <br></br>{" "}
+                          customize it through the theme editor.
+                        </Text>
+                      </BlockStack>
+                    </InlineStack>
+                  </div>
+
+                  <Button
+                    variant="primary"
+                    size="large"
+                    url="/app/sections/store"
+                  >
+                    Explore Sections
+                  </Button>
+                </BlockStack>
+              </Card>
+            </Layout.Section>
+          ) : (
+            <>
+              {/* All Sections in Grid */}
+              <Layout.Section>
+                <BlockStack gap="400">
+                  {allSections.length > 0 && (
+                    <div style={gridStyles}>
+                      {allSections.map(renderSectionCard)}
+                    </div>
+                  )}
+                </BlockStack>
+              </Layout.Section>
+            </>
+          )}
+        </Layout>
+      </Page>
+      {toastMarkup}
+    </Frame>
+  );
 }

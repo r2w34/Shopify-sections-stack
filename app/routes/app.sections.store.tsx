@@ -29,7 +29,6 @@ import { connectToDB } from "app/db.server";
 type SerializedSection = {
   _id: string;
   name: string;
-  identifier: string;
   description: string;
   detailedFeatures: string[];
   category: string;
@@ -48,14 +47,12 @@ type SerializedSection = {
 };
 
 export async function loader({ request }: LoaderFunctionArgs) {
-  console.log("🔍 [LOADER] Starting section store data fetch...");
 
   await connectToDB();
   const url = new URL(request.url);
   const category = url.searchParams.get("category") || "all";
   const search = url.searchParams.get("search") || "";
 
-  console.log("🔍 [LOADER] Query params:", { category, search });
 
   const query: any = {};
 
@@ -79,38 +76,19 @@ export async function loader({ request }: LoaderFunctionArgs) {
     query.$or = [
       { name: { $regex: search, $options: "i" } },
       { description: { $regex: search, $options: "i" } },
-      { identifier: { $regex: search, $options: "i" } },
       { tags: { $in: [new RegExp(search, "i")] } },
       { category: { $regex: search, $options: "i" } },
     ];
   }
 
-  console.log("🔍 [LOADER] MongoDB query:", JSON.stringify(query, null, 2));
 
   const sections = await SectionModel.find(query)
     .sort({ createdAt: -1 })
     .lean();
 
-  console.log("🔍 [LOADER] Raw sections from DB:", sections.length);
-  console.log(
-    "🔍 [LOADER] First section sample:",
-    sections[0]
-      ? {
-          name: sections[0].name,
-          category: sections[0].category,
-          tags: sections[0].tags,
-          detailedFeatures: sections[0].detailedFeatures,
-          imageGallery: sections[0].imageGallery,
-          thumbnailUrl: sections[0].thumbnailUrl,
-        }
-      : "No sections found",
-  );
-
-  // Transform the data to ensure proper typing
   const transformedSections = sections.map((section: any) => ({
     _id: section._id.toString(),
     name: section.name,
-    identifier: section.identifier,
     description: section.description || "",
     detailedFeatures: section.detailedFeatures || [],
     category: section.category || "other",
@@ -128,11 +106,7 @@ export async function loader({ request }: LoaderFunctionArgs) {
     updatedAt: section.updatedAt,
   }));
 
-  console.log("🔍 [LOADER] Transformed sections:", transformedSections.length);
-  console.log(
-    "🔍 [LOADER] First transformed section:",
-    transformedSections[0] || "No sections",
-  );
+  // log("🔍 [LOADER] Transformed sections:", transformedSections.length);
 
   return json({ sections: transformedSections, category, search });
 }
@@ -159,10 +133,7 @@ export default function SectionStorePage() {
   const [searchParams, setSearchParams] = useSearchParams();
   const navigate = useNavigate();
 
-  console.log("🎨 [COMPONENT] Received sections:", sections.length);
-  console.log("🎨 [COMPONENT] Current category:", category);
-  console.log("🎨 [COMPONENT] Current search:", search);
-
+   
   const [selectedSection, setSelectedSection] =
     useState<SerializedSection | null>(null);
   const [searchValue, setSearchValue] = useState(search);
@@ -171,7 +142,6 @@ export default function SectionStorePage() {
 
   const handleCategoryChange = useCallback(
     (newCategory: string) => {
-      console.log("🔄 [CATEGORY] Changing to:", newCategory);
       setSelectedCategory(newCategory);
       const params = new URLSearchParams(searchParams);
       if (newCategory === "all") {
@@ -186,7 +156,6 @@ export default function SectionStorePage() {
 
   const handleSearchChange = useCallback(
     (value: string) => {
-      console.log("🔍 [SEARCH] Search value changed:", value);
       setSearchValue(value);
 
       const timeoutId = setTimeout(() => {
@@ -205,7 +174,6 @@ export default function SectionStorePage() {
   );
 
   const handleSearchSubmit = useCallback(() => {
-    console.log("🔍 [SEARCH] Manual search submit:", searchValue);
     const params = new URLSearchParams(searchParams);
     if (searchValue) {
       params.set("search", searchValue);
@@ -216,20 +184,11 @@ export default function SectionStorePage() {
   }, [searchValue, searchParams, setSearchParams]);
 
   const handleSectionClick = useCallback((section: SerializedSection) => {
-    console.log("🖱️ [MODAL] Opening section:", {
-      name: section.name,
-      category: section.category,
-      tags: section.tags,
-      detailedFeatures: section.detailedFeatures,
-      imageGallery: section.imageGallery,
-      thumbnailUrl: section.thumbnailUrl,
-    });
     setSelectedSection(section);
     setCurrentImageIndex(0); // Reset image slider
   }, []);
 
   const handleCloseModal = useCallback(() => {
-    console.log("🖱️ [MODAL] Closing modal");
     setSelectedSection(null);
     setCurrentImageIndex(0);
   }, []);
@@ -274,25 +233,27 @@ export default function SectionStorePage() {
   }, [selectedSection, getImageArray]);
 
   const filteredSections = useMemo(() => {
-    const filtered = sections.filter((section: SerializedSection) => {
-      if (selectedCategory === "free") return section.isFree;
-      if (selectedCategory === "paid") return !section.isFree;
-      if (selectedCategory === "popular") return section.isPopular;
-      if (selectedCategory === "trending") return section.isTrending;
-      if (selectedCategory === "newest") return true;
-      if (selectedCategory === "featured") return section.isFeatured;
-      if (selectedCategory !== "all")
-        return section.category === selectedCategory;
-      return true;
-    });
+    if (selectedCategory === "all" || selectedCategory === "newest") {
+      return sections;
+    }
+    if (selectedCategory === "free") {
+      return sections.filter((section: SerializedSection) => section.isFree);
+    }
+    if (selectedCategory === "paid") {
+      return sections.filter((section: SerializedSection) => !section.isFree);
+    }
+    if (selectedCategory === "popular") {
+      return sections.filter((section: SerializedSection) => section.isPopular);
+    }
+    if (selectedCategory === "trending") {
+      return sections.filter(
+        (section: SerializedSection) => section.isTrending,
+      );
+    }
 
-    console.log(
-      "🔍 [FILTER] Filtered sections:",
-      filtered.length,
-      "from",
-      sections.length,
+    return sections.filter(
+      (section: SerializedSection) => section.category === selectedCategory,
     );
-    return filtered;
   }, [sections, selectedCategory]);
 
   return (
@@ -306,7 +267,7 @@ export default function SectionStorePage() {
               >
                 <BlockStack gap="400">
                   <Text as="h1" variant="headingXl">
-                    🛍️ Section Store
+                    Section Stack
                   </Text>
 
                   <div style={{ maxWidth: "400px" }}>
@@ -374,7 +335,7 @@ export default function SectionStorePage() {
                       {filteredSections.map((section: SerializedSection) => (
                         <Grid.Cell
                           key={section._id}
-                          columnSpan={{ xs: 6, sm: 3, md: 2, lg: 2, xl: 2 }}
+                          columnSpan={{ xs: 6, sm: 3, md: 2, lg: 3, xl: 3 }}
                         >
                           <Card padding="0">
                             <div
@@ -402,7 +363,7 @@ export default function SectionStorePage() {
                                     style={{
                                       width: "100%",
                                       height: "200px",
-                                      objectFit: "cover",
+                                      objectFit: "contain",
                                       borderRadius: "8px 8px 0 0",
                                     }}
                                   />
@@ -441,17 +402,6 @@ export default function SectionStorePage() {
                                       : `$${section.price}`}
                                   </Badge>
                                 </div>
-
-                                {/* Category badge */}
-                                <div
-                                  style={{
-                                    position: "absolute",
-                                    top: "8px",
-                                    left: "8px",
-                                  }}
-                                >
-                                  <Badge tone="info">{section.category}</Badge>
-                                </div>
                               </div>
 
                               <div style={{ padding: "16px" }}>
@@ -459,9 +409,7 @@ export default function SectionStorePage() {
                                   <Text as="h3" variant="headingMd" truncate>
                                     {section.name}
                                   </Text>
-                                  <Text as="p" tone="subdued" truncate>
-                                    {section.identifier}
-                                  </Text>
+
                                   {section.description && (
                                     <Text as="p" tone="subdued">
                                       {section.description.length > 80
@@ -506,7 +454,7 @@ export default function SectionStorePage() {
             onClose={handleCloseModal}
             title=""
             size="large"
-            noScroll
+            
           >
             <div
               style={{
@@ -541,7 +489,7 @@ export default function SectionStorePage() {
                           style={{
                             width: "400px",
                             height: "300px",
-                            objectFit: "cover",
+                            objectFit: "contain",
                             borderRadius: "12px",
                             boxShadow: "0 4px 12px rgba(0,0,0,0.1)",
                           }}
@@ -661,7 +609,7 @@ export default function SectionStorePage() {
                             }}
                           >
                             <img
-                              src={imageUrl || "/placeholder.svg"}
+                              src={imageUrl}
                               alt={`${selectedSection.name} thumbnail ${index + 1}`}
                               style={{
                                 width: "60px",
@@ -690,28 +638,6 @@ export default function SectionStorePage() {
                   position: "relative",
                 }}
               >
-                {/* Close button */}
-                <button
-                  onClick={handleCloseModal}
-                  style={{
-                    position: "absolute",
-                    top: "16px",
-                    right: "16px",
-                    background: "none",
-                    border: "none",
-                    fontSize: "24px",
-                    cursor: "pointer",
-                    color: "#6d7175",
-                    width: "32px",
-                    height: "32px",
-                    display: "flex",
-                    alignItems: "center",
-                    justifyContent: "center",
-                  }}
-                >
-                  ×
-                </button>
-
                 <div
                   style={{
                     flex: 1,
@@ -720,14 +646,11 @@ export default function SectionStorePage() {
                     gap: "20px",
                   }}
                 >
-                  {/* Title and Identifier */}
                   <div>
                     <Text as="h2" variant="headingLg">
                       {selectedSection.name}
                     </Text>
-                    <Text as="p" tone="subdued">
-                      {selectedSection.identifier}
-                    </Text>
+
                     <span
                       style={{
                         display: "inline-block",
@@ -838,8 +761,7 @@ export default function SectionStorePage() {
                     </div>
                   )}
 
-                  {/* Action Buttons */}
-                  <div style={{ marginTop: "auto", paddingTop: "20px" }}>
+                  <div style={{ marginTop: "0", paddingTop: "20px" }}>
                     <div
                       style={{
                         display: "flex",
@@ -851,20 +773,14 @@ export default function SectionStorePage() {
                         style={{
                           width: "100%",
                           padding: "14px",
-                          backgroundColor: selectedSection.isFree
-                            ? "#6d7175"
-                            : "#2c2c2c",
+                          backgroundColor: "#2c2c2c",
                           color: "white",
                           border: "none",
                           borderRadius: "6px",
                           fontSize: "16px",
                           fontWeight: "600",
-                          cursor: selectedSection.isFree
-                            ? "not-allowed"
-                            : "pointer",
-                          opacity: selectedSection.isFree ? 0.6 : 1,
+                          cursor: "pointer",
                         }}
-                        disabled={selectedSection.isFree}
                         onClick={async () => {
                           const res = await fetch("/api/purchase-section", {
                             method: "POST",
@@ -875,8 +791,16 @@ export default function SectionStorePage() {
                           });
 
                           const data = await res.json();
-                          if (data.confirmationUrl) {
-                            window.location.href = data.confirmationUrl;
+                          if (data.redirectUrl) {
+                            navigate(data.redirectUrl);
+                          } else if (data.confirmationUrl) {
+                            if (window.top) {
+                              window.top.location.href = data.confirmationUrl;
+                             
+                            } else {
+                              window.location.href = data.confirmationUrl;
+                            
+                            }
                           } else {
                             alert("Error: " + JSON.stringify(data.error));
                           }
@@ -884,27 +808,6 @@ export default function SectionStorePage() {
                       >
                         Purchase section
                       </button>
-
-                      {selectedSection.demoUrl && (
-                        <button
-                          onClick={() =>
-                            window.open(selectedSection.demoUrl, "_blank")
-                          }
-                          style={{
-                            width: "100%",
-                            padding: "12px",
-                            backgroundColor: "transparent",
-                            color: "#333",
-                            border: "1px solid #e1e3e5",
-                            borderRadius: "6px",
-                            fontSize: "14px",
-                            fontWeight: "500",
-                            cursor: "pointer",
-                          }}
-                        >
-                          View Demo Store
-                        </button>
-                      )}
                     </div>
                   </div>
                 </div>
