@@ -1,4 +1,4 @@
-# Presenting **Section Stack** 🧩
+# Presenting **Sections Stack** 🧩
 
 Section Stack is a Shopify app that allows merchants to browse, purchase, and add custom theme sections to their Shopify store. Inspired by the "Section Store" app, Section Stack empowers merchants to enhance their storefronts with both free and premium sections, managed through a modern admin interface.
 
@@ -159,7 +159,7 @@ CLOUDINARY_API_SECRET=your_cloudinary_api_secret
 ---
 
 ## 💡 Inspiration
-This application is inspired by the existing Shopify app "Section Store" but is built from scratch as **Section Stack**.
+This application is inspired by the existing Shopify app [Section Store](https://apps.shopify.com/section-factory) but is built from scratch as **Sections Stack**.
 
 ---
 
