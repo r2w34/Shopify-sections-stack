@@ -110,6 +110,7 @@ sections-stack/
 - **Theme integration:** After purchase, merchants can easily add the section to their selected theme.
 - **Built with:**
   - [Remix](https://remix.run/) (Shopify template)
+  - [MongoDB] (Instead of Prisma that comes with remix template.)
   - [Shopify GraphQL APIs](https://shopify.dev/docs/api/admin-graphql)
   - [Cloudinary](https://cloudinary.com/) for image uploads
   - Hosted on [Cloudflare](https://www.cloudflare.com/)
