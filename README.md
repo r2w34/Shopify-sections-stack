@@ -179,3 +179,16 @@ This application is inspired by the existing Shopify app "Section Store" but is 
 ---
 
 ## 🙌 Enjoy using **Section Stack** to supercharge your Shopify store with beautiful, reusable theme sections!
+
+---
+
+## ❤️ Made with Heart
+
+Thanks for checking out **Section Stack**! I built this app to empower Shopify merchants with flexible, beautifully designed theme sections that are easy to manage and integrate.
+
+If you have any questions, feedback, or you're looking for help with Shopify theme development or customization, feel free to reach out:
+
+📧 Email: [imhassaan.dev@gmail.com](mailto:imhassaan.dev@gmail.com)  
+🔗 LinkedIn: [linkedin.com/in/hassaanistic](https://linkedin.com/in/hassaanistic)
+
+**Made with heart — Happy building! 🚀**
