@@ -110,7 +110,7 @@ sections-stack/
 - **Theme integration:** After purchase, merchants can easily add the section to their selected theme.
 - **Built with:**
   - [Remix](https://remix.run/) (Shopify template)
-  - [MongoDB] (Instead of Prisma that comes with remix template.)
+  - MongoDB (Instead of Prisma that comes with remix template.)
   - [Shopify GraphQL APIs](https://shopify.dev/docs/api/admin-graphql)
   - [Cloudinary](https://cloudinary.com/) for image uploads
   - Hosted on [Cloudflare](https://www.cloudflare.com/)
@@ -123,10 +123,15 @@ Create a `.env` file based on this template:
 
 ```env
 # .env.example
+MONGODB_URI=your_mongodb_string
+
+SHOPIFY_API_KEY=your_app_api_key
+SHOPIFY_API_SECRET=your_app_api_secret
+
 CLOUDINARY_CLOUD_NAME=your_cloudinary_cloud_name
 CLOUDINARY_API_KEY=your_cloudinary_api_key
 CLOUDINARY_API_SECRET=your_cloudinary_api_secret
-# Add any other required environment variables here
+
 ```
 
 ---
