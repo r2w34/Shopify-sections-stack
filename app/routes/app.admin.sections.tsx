@@ -39,12 +39,13 @@ import {
 import { useState, useEffect } from "react";
 import { EditIcon, DeleteIcon } from "@shopify/polaris-icons";
 import SectionModel from "app/models/SectionModel";
+import SectionContentModel from "app/models/sectionContentModel";
 import { connectToDB } from "app/db.server";
-import fs from "fs/promises";
-import path from "path";
+import { requireAdmin } from "app/utils/requireAdmin";
 
 export async function loader({ request }: LoaderFunctionArgs) {
   await connectToDB();
+  await requireAdmin(request);
   const url = new URL(request.url);
   const success = url.searchParams.get("success");
   const deleted = url.searchParams.get("deleted");
@@ -55,6 +56,8 @@ export async function loader({ request }: LoaderFunctionArgs) {
 
 export async function action({ request }: ActionFunctionArgs) {
   await connectToDB();
+  await requireAdmin(request);
+
   const formData = await request.formData();
   const intent = formData.get("intent")?.toString();
 
@@ -69,44 +72,30 @@ export async function action({ request }: ActionFunctionArgs) {
     }
 
     try {
-      const section = await SectionModel.findById(sectionId);
-      if (section) {
-        // Delete the associated .liquid file
-        const filePath = path.join(
-          process.cwd(),
-          "app",
-          "sections",
-          section.filePath,
-        );
-        try {
-          await fs.unlink(filePath);
-          console.log(`Deleted file: ${filePath}`);
-        } catch (fileErr) {
-          console.warn(`Could not delete file: ${filePath}`, fileErr);
-        }
-      }
+      // Delete the section content first
+      await SectionContentModel.findOneAndDelete({ sectionId });
 
+      // Then delete the section
       await SectionModel.findByIdAndDelete(sectionId);
-      return redirect("/app/admin/sections?deleted=1");
+
+      return json({ deleted: true });
     } catch (err: any) {
-      console.error("❌ Section deletion failed:", err);
       return json({ error: err.message }, { status: 500 });
     }
   }
 
   // Handle create action
   const name = formData.get("name")?.toString();
-  const identifier = formData.get("identifier")?.toString();
   const description = formData.get("description")?.toString();
   const category = formData.get("category")?.toString();
   const type = formData.get("type")?.toString();
   const price = Number.parseFloat(formData.get("price")?.toString() || "0");
   const thumbnailUrl = formData.get("thumbnailUrl")?.toString();
-  const demoUrl = formData.get("demoUrl")?.toString();
-  const isPopular = formData.get("isPopular") === "on";
-  const isTrending = formData.get("isTrending") === "on";
-  const isFeatured = formData.get("isFeatured") === "on";
+  const isPopular = formData.get("isPopular") === "true";
+  const isTrending = formData.get("isTrending") === "true";
+  const isFeatured = formData.get("isFeatured") === "true";
 
+  const customCode = formData.get("customCode")?.toString() || "";
   // Parse detailed features (one per line)
   const detailedFeaturesText =
     formData.get("detailedFeatures")?.toString() || "";
@@ -129,67 +118,39 @@ export async function action({ request }: ActionFunctionArgs) {
     .map((url) => url.trim())
     .filter((url) => url.length > 0);
 
-  console.log("📨 Form data received:", {
-    name,
-    identifier,
-    description,
-    category,
-    type,
-    price,
-    thumbnailUrl,
-    detailedFeatures,
-    tags,
-    imageGallery,
-    demoUrl,
-    isPopular,
-    isTrending,
-    isFeatured,
-  });
-
-  if (!name || !identifier || !type || !category) {
-    console.warn("⚠️ Missing required fields");
+  if (!name || !type || !category) {
     return json({ error: "Missing required fields." }, { status: 400 });
   }
 
   try {
-    const filePath = `${type}/${identifier}.liquid`;
-
     // Create the section in database
     const created = await SectionModel.create({
       name,
-      identifier,
       description,
       detailedFeatures,
       category,
       tags,
       thumbnailUrl,
       imageGallery,
-      demoUrl,
       isFree: type === "free",
       price: type === "paid" ? price : 0,
-      filePath,
       isPopular,
       isTrending,
       isFeatured,
     });
 
-    // Create the .liquid file automatically
-    const sectionsDir = path.join(process.cwd(), "app", "sections");
-    const typeDir = path.join(sectionsDir, type);
-    const liquidFilePath = path.join(typeDir, `${identifier}.liquid`);
-
-    // Ensure directories exist
-    await fs.mkdir(typeDir, { recursive: true });
-
-    // Create a basic .liquid template
-    const liquidTemplate = `{% comment %}
+    // Create the section content
+    const liquidTemplate =
+      customCode.trim().length > 0
+        ? customCode
+        : `{% comment %}
   ${name}
   Category: ${category}
   ${description ? `Description: ${description}` : ""}
   Created: ${new Date().toISOString()}
 {% endcomment %}
 
-<div class="${identifier}-section">
+<div class="${name.toLowerCase().replace(/\s+/g, "-")}-section">
   <div class="container">
     <h2>{{ section.settings.heading | default: '${name}' }}</h2>
     {% if section.settings.description != blank %}
@@ -202,17 +163,14 @@ export async function action({ request }: ActionFunctionArgs) {
 </div>
 
 <style>
-  .${identifier}-section {
+  .${name.toLowerCase().replace(/\s+/g, "-")}-section {
     padding: 60px 0;
   }
-  
-  .${identifier}-section .container {
+  .${name.toLowerCase().replace(/\s+/g, "-")}-section .container {
     max-width: 1200px;
     margin: 0 auto;
     padding: 0 20px;
   }
-  
-  /* Add your custom styles here */
 </style>
 
 {% schema %}
@@ -239,13 +197,14 @@ export async function action({ request }: ActionFunctionArgs) {
 }
 {% endschema %}`;
 
-    await fs.writeFile(liquidFilePath, liquidTemplate, "utf-8");
-    console.log(`✅ Created liquid file: ${liquidFilePath}`);
+    // Save the section content to database
+    await SectionContentModel.create({
+      sectionId: created._id,
+      content: liquidTemplate,
+    });
 
-    console.log("✅ Section created:", created);
-    return redirect("/app/admin/sections?success=1");
+    return json({ success: true });
   } catch (err: any) {
-    console.error("❌ Section creation failed:", err);
     return json({ error: err.message }, { status: 500 });
   }
 }
@@ -259,7 +218,6 @@ export default function AdminSectionsPage() {
   // Form states
   const [type, setType] = useState("free");
   const [name, setName] = useState("");
-  const [identifier, setIdentifier] = useState("");
   const [description, setDescription] = useState("");
   const [category, setCategory] = useState("");
   const [price, setPrice] = useState("");
@@ -273,6 +231,7 @@ export default function AdminSectionsPage() {
   const [isFeatured, setIsFeatured] = useState(false);
   const [file, setFile] = useState<File | null>(null);
   const [uploading, setUploading] = useState(false);
+  const [customCode, setCustomCode] = useState("");
 
   // Toast states
   const [showSuccessToast, setShowSuccessToast] = useState(false);
@@ -289,15 +248,23 @@ export default function AdminSectionsPage() {
     sectionName: "",
   });
 
-  // Handle toast notifications
-  useEffect(() => {
-    if (success === "1") {
-      setShowSuccessToast(true);
-    }
-    if (deleted === "1") {
-      setShowDeleteToast(true);
-    }
-  }, [success, deleted]);
+  function resetForm() {
+    setType("free");
+    setName("");
+    setDescription("");
+    setCategory("");
+    setPrice("");
+    setThumbnailUrl("");
+    setDetailedFeatures("");
+    setTags("");
+    setImageGallery("");
+    setDemoUrl("");
+    setIsPopular(false);
+    setIsTrending(false);
+    setIsFeatured(false);
+    setFile(null);
+    setCustomCode("");
+  }
 
   const categoryOptions = [
     { label: "Select category...", value: "" },
@@ -361,6 +328,16 @@ export default function AdminSectionsPage() {
     setDeleteModal({ isOpen: false, sectionId: "", sectionName: "" });
   };
 
+  useEffect(() => {
+    if (actionData?.success) {
+      setShowSuccessToast(true);
+      resetForm();
+    }
+    if (actionData?.deleted) {
+      setShowDeleteToast(true);
+      resetForm();
+    }
+  }, [actionData]);
   return (
     <Frame>
       <Page title="Manage Sections">
@@ -394,26 +371,22 @@ export default function AdminSectionsPage() {
                   Add New Section
                 </Text>
 
-                <Form method="post">
+                <Form
+                  method="post"
+                  onSubmit={() => {
+                    // Ensure checkboxes are submitted as 'true' or 'false' strings
+                    // This is handled by the hidden inputs below
+                  }}
+                >
                   <FormLayout>
-                    <FormLayout.Group>
-                      <TextField
-                        label="Name"
-                        name="name"
-                        value={name}
-                        onChange={setName}
-                        requiredIndicator
-                        autoComplete="off"
-                      />
-                      <TextField
-                        label="Identifier (e.g. hero-banner-v2)"
-                        name="identifier"
-                        value={identifier}
-                        onChange={setIdentifier}
-                        autoComplete="off"
-                        requiredIndicator
-                      />
-                    </FormLayout.Group>
+                    <TextField
+                      label="Name"
+                      name="name"
+                      value={name}
+                      onChange={setName}
+                      requiredIndicator
+                      autoComplete="off"
+                    />
 
                     <FormLayout.Group>
                       <Select
@@ -492,23 +465,113 @@ export default function AdminSectionsPage() {
                       value={thumbnailUrl}
                     />
 
-                    <TextField
-                      label="Additional Images (comma separated URLs)"
+                    <DropZone
+                      onDrop={async (_dropFiles, acceptedFiles) => {
+                        if (acceptedFiles.length === 0) return;
+
+                        setUploading(true);
+
+                        const uploadedUrls: string[] = [];
+
+                        for (const file of acceptedFiles) {
+                          const data = new FormData();
+                          data.append("file", file);
+
+                          try {
+                            const res = await fetch("/api/upload", {
+                              method: "POST",
+                              body: data,
+                            });
+                            const json = await res.json();
+                            uploadedUrls.push(json.url);
+                          } catch (error) {
+                            console.error("Upload failed:", error);
+                          }
+                        }
+
+                        // Merge with any existing images
+                        const existing = imageGallery
+                          ? imageGallery.split(",").map((url) => url.trim())
+                          : [];
+                        const combined = [...existing, ...uploadedUrls];
+
+                        setImageGallery(combined.join(", "));
+                        setUploading(false);
+                      }}
+                      accept="image/*"
+                      allowMultiple
+                      type="image"
+                    >
+                      <DropZone.FileUpload
+                        actionTitle="Upload Additional Images"
+                        actionHint="You can select multiple images"
+                      />
+                    </DropZone>
+
+                    <input
+                      type="hidden"
                       name="imageGallery"
                       value={imageGallery}
-                      onChange={setImageGallery}
-                      autoComplete="off"
-                      helpText="Enter image URLs separated by commas for gallery"
                     />
 
-                    <TextField
-                      label="Demo Store URL"
-                      name="demoUrl"
-                      value={demoUrl}
-                      onChange={setDemoUrl}
-                      autoComplete="off"
-                      helpText="Link to a demo store showing this section"
-                    />
+                    {imageGallery && (
+                      <BlockStack gap="200">
+                        <Text as="h4" variant="headingSm">
+                          Gallery Images:
+                        </Text>
+                        <InlineStack gap="100">
+                          {imageGallery
+                            .split(",")
+                            .map((url, index) => url.trim())
+                            .filter(Boolean)
+                            .map((url, index, arr) => (
+                              <div key={index} style={{ position: "relative", display: "inline-block" }}>
+                                <img
+                                  src={url}
+                                  alt={`Gallery ${index}`}
+                                  style={{
+                                    width: "80px",
+                                    height: "60px",
+                                    objectFit: "cover",
+                                    borderRadius: "6px",
+                                    border: "1px solid #eee",
+                                    background: "#fafafa",
+                                  }}
+                                />
+                                <button
+                                  type="button"
+                                  onClick={() => {
+                                    // Remove the image at this index
+                                    const newGallery = arr.filter((_, i) => i !== index);
+                                    setImageGallery(newGallery.join(", "));
+                                  }}
+                                  style={{
+                                    position: "absolute",
+                                    top: "-8px",
+                                    right: "-8px",
+                                    background: "#fff",
+                                    border: "1px solid #ccc",
+                                    borderRadius: "50%",
+                                    width: "22px",
+                                    height: "22px",
+                                    cursor: "pointer",
+                                    display: "flex",
+                                    alignItems: "center",
+                                    justifyContent: "center",
+                                    fontWeight: "bold",
+                                    color: "#d32f2f",
+                                    boxShadow: "0 1px 4px rgba(0,0,0,0.08)",
+                                    zIndex: 2,
+                                  }}
+                                  aria-label="Remove image"
+                                >
+                                  &minus;
+                                </button>
+                              </div>
+                            ))}
+                        </InlineStack>
+                      </BlockStack>
+                    )}
 
                     {type === "paid" && (
                       <TextField
@@ -521,6 +584,16 @@ export default function AdminSectionsPage() {
                       />
                     )}
 
+                    <TextField
+                      label="Custom Liquid Code"
+                      name="customCode"
+                      value={customCode}
+                      onChange={setCustomCode}
+                      multiline={10}
+                      autoComplete="off"
+                      helpText="Paste the full Liquid code for this section"
+                    />
+
                     <BlockStack gap="300">
                       <Text as="h3" variant="headingMd">
                         Section Flags
@@ -528,20 +601,32 @@ export default function AdminSectionsPage() {
                       <Checkbox
                         label="Popular section"
                         checked={isPopular}
-                        onChange={setIsPopular}
+                        onChange={(checked) => setIsPopular(checked)}
+                      />
+                      <input
+                        type="hidden"
                         name="isPopular"
+                        value={isPopular ? "true" : "false"}
                       />
                       <Checkbox
                         label="Trending section"
                         checked={isTrending}
-                        onChange={setIsTrending}
+                        onChange={(checked) => setIsTrending(checked)}
+                      />
+                      <input
+                        type="hidden"
                         name="isTrending"
+                        value={isTrending ? "true" : "false"}
                       />
                       <Checkbox
                         label="Featured section"
                         checked={isFeatured}
-                        onChange={setIsFeatured}
+                        onChange={(checked) => setIsFeatured(checked)}
+                      />
+                      <input
+                        type="hidden"
                         name="isFeatured"
+                        value={isFeatured ? "true" : "false"}
                       />
                     </BlockStack>
 
@@ -575,7 +660,7 @@ export default function AdminSectionsPage() {
                         key={section._id}
                         columnSpan={{ xs: 6, sm: 3, md: 2, lg: 4 }}
                       >
-                        <Card padding="400">
+                        <Card padding="400" >
                           <BlockStack gap="300">
                             {section.thumbnailUrl && (
                               <div
@@ -584,10 +669,17 @@ export default function AdminSectionsPage() {
                                   justifyContent: "center",
                                 }}
                               >
-                                <Thumbnail
-                                  size="large"
+                                <img
+                                  src={section.thumbnailUrl}
                                   alt={section.name}
-                                  source={section.thumbnailUrl}
+                                  style={{
+                                    width: "100%",
+                                    height: "120px",
+                                    borderRadius: "8px",
+                                    objectFit: "contain",
+                                    background: "#f6f6f7",
+                                    display: "block",
+                                  }}
                                 />
                               </div>
                             )}
@@ -596,21 +688,22 @@ export default function AdminSectionsPage() {
                               <Text as="h3" variant="headingMd" truncate>
                                 {section.name}
                               </Text>
-                              <Text as="p" tone="subdued" truncate>
-                                {section.identifier}
-                              </Text>
-                              <Badge tone="info">{section.category}</Badge>
+                              <InlineStack gap="100">
+                                <Badge size="small" tone="info">
+                                  {section.category}
+                                </Badge>
+                              </InlineStack>
 
                               {section.tags && section.tags.length > 0 && (
                                 <InlineStack gap="100">
                                   {section.tags
-                                    .slice(0, 3)
+                                    .slice(0, 2)
                                     .map((tag: string, index: number) => (
                                       <Tag key={index}>{tag}</Tag>
                                     ))}
-                                  {section.tags.length > 3 && (
+                                  {section.tags.length > 2 && (
                                     <Text as="span" tone="subdued">
-                                      +{section.tags.length - 3}
+                                      +{section.tags.length - 2}
                                     </Text>
                                   )}
                                 </InlineStack>

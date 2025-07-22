@@ -1,4 +1,3 @@
-// app/shopify.server.ts
 import "@shopify/shopify-app-remix/adapters/node";
 import {
   ApiVersion,
@@ -37,20 +36,14 @@ const shopify = shopifyApp({
   },
   hooks: {
     afterAuth: async ({ session }) => {
-      console.log("🔐 After auth hook triggered for shop:", session.shop);
-
       try {
-        // Register webhooks
         await shopify.registerWebhooks({ session });
 
-        // Connect to database and create/update user
         await connectToDB();
 
-        // Check if user already exists
         let user = await UserModel.findOne({ shop: session.shop });
 
         if (!user) {
-          // Create new user
           user = await UserModel.create({
             shop: session.shop,
             accessToken: session.accessToken,
@@ -58,19 +51,13 @@ const shopify = shopifyApp({
             createdAt: new Date(),
             updatedAt: new Date(),
           });
-
-          console.log("✅ New user created:", user);
         } else {
-          // Update existing user with latest session info
           user.accessToken = session.accessToken;
           user.scope = session.scope;
           user.updatedAt = new Date();
           await user.save();
-
-          console.log("✅ Existing user updated:", user);
         }
       } catch (error) {
-        console.error("❌ Error in afterAuth hook:", error);
       }
     },
   },

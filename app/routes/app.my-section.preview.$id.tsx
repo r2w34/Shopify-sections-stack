@@ -80,7 +80,6 @@ export async function loader({ params, request }: LoaderFunctionArgs) {
       isTrending: section.isTrending,
       isFeatured: section.isFeatured,
       downloadCount: section.downloadCount,
-      rating: section.rating,
       demoUrl: section.demoUrl,
       tags: section.tags || [],
     },
@@ -138,7 +137,7 @@ export default function PreviewSectionPage() {
                       style={{
                         width: "100%",
                         height: "100%",
-                        objectFit: "cover",
+                        objectFit: "contain",
                       }}
                     />
 
@@ -191,6 +190,7 @@ export default function PreviewSectionPage() {
                         justifyContent: "center",
                         gap: "8px",
                         padding: "16px",
+                        objectFit: "contain",
                       }}
                     >
                       {images.map((_: any, index: any) => (
@@ -220,12 +220,17 @@ export default function PreviewSectionPage() {
                 <Text as="h3" variant="headingMd">
                   Details:
                 </Text>
-                <Text as="p" tone="subdued">
-                  {section.detailedFeatures &&
-                  section.detailedFeatures.length > 0
-                    ? section.detailedFeatures.join(", ")
-                    : "Colors, link, text, sizes etc can be customised"}
-                </Text>
+                {section.detailedFeatures && section.detailedFeatures.length > 0 ? (
+                  <ul style={{ paddingLeft: '20px', margin: 0 }}>
+                    {section.detailedFeatures.map((feature: string, idx: number) => (
+                      <li key={idx} style={{ marginBottom: '6px', color: '#555', fontSize: '15px' }}>{feature}</li>
+                    ))}
+                  </ul>
+                ) : (
+                  <ul style={{ paddingLeft: '20px', margin: 0 }}>
+                    <li style={{ color: '#555', fontSize: '15px' }}>Colors, link, text, sizes etc can be customised</li>
+                  </ul>
+                )}
               </BlockStack>
             </Card>
           </BlockStack>
@@ -261,13 +266,6 @@ export default function PreviewSectionPage() {
                     <Text as="p">Works with any Shopify theme</Text>
                   </InlineStack>
                 </BlockStack>
-
-                {section.rating > 0 && (
-                  <Text as="p" tone="subdued" alignment="center">
-                    Rating: {section.rating}/5 ⭐ ({section.downloadCount}{" "}
-                    downloads)
-                  </Text>
-                )}
               </BlockStack>
             </Card>
 

@@ -38,10 +38,9 @@ import { connectToDB } from "app/db.server";
 import UserModel from "app/models/userModel";
 import PurchaseModel from "app/models/PurchaseModel";
 import SectionModel from "app/models/SectionModel";
+import SectionContentModel from "app/models/sectionContentModel";
 import { authenticate } from "app/shopify.server";
 import { useState, useEffect } from "react";
-import fs from "fs/promises";
-import path from "path";
 
 interface Theme {
   id: string;
@@ -59,8 +58,6 @@ interface Section {
   isPopular: boolean;
   isTrending: boolean;
   price: number;
-  filePath: string;
-  identifier: string;
 }
 
 export async function loader({ request }: LoaderFunctionArgs) {
@@ -86,7 +83,6 @@ export async function loader({ request }: LoaderFunctionArgs) {
   const purchases = await PurchaseModel.find({ userId: user._id })
     .populate("sectionId")
     .lean();
-
   const sections = purchases.map((purchase: any) => ({
     _id: purchase.sectionId._id.toString(),
     name: purchase.sectionId.name,
@@ -97,8 +93,6 @@ export async function loader({ request }: LoaderFunctionArgs) {
     isPopular: purchase.sectionId.isPopular,
     isTrending: purchase.sectionId.isTrending,
     price: purchase.sectionId.price,
-    filePath: purchase.sectionId.filePath,
-    identifier: purchase.sectionId.identifier,
   }));
 
   const allSections = sections;
@@ -140,10 +134,8 @@ export async function action({ request }: ActionFunctionArgs) {
   const formData = await request.formData();
   const sectionId = formData.get("sectionId") as string;
   const themeId = formData.get("themeId") as string;
-  const sectionIdentifier = formData.get("sectionIdentifier") as string;
-  const filePath = formData.get("filePath") as string;
 
-  if (!sectionId || !themeId || !sectionIdentifier || !filePath) {
+  if (!sectionId || !themeId) {
     return json({ error: "Missing required parameters" }, { status: 400 });
   }
 
@@ -152,25 +144,13 @@ export async function action({ request }: ActionFunctionArgs) {
 
     const { admin } = await authenticate.admin(request);
 
-    const fullFilePath = path.join(process.cwd(), "app", "sections", filePath);
-
-    let content: string;
-    try {
-      content = await fs.readFile(fullFilePath, "utf-8");
-    } catch (fileError: any) {
-      const alternativePath = path.join(process.cwd(), filePath);
-
-      try {
-        content = await fs.readFile(alternativePath, "utf-8");
-      } catch (altError) {
-        return json(
-          {
-            error: `Failed to read section file: ${fileError.message}. Tried paths: ${fullFilePath}, ${alternativePath}`,
-          },
-          { status: 500 },
-        );
-      }
+    // Get section content from database
+    const sectionContent = await SectionContentModel.findOne({ sectionId });
+    if (!sectionContent) {
+      return json({ error: "Section content not found" }, { status: 404 });
     }
+
+    const content = sectionContent.content;
 
     // Upload section to theme using GraphQL
 
@@ -188,11 +168,17 @@ export async function action({ request }: ActionFunctionArgs) {
       }
     `;
 
+    // Get section name for filename
+    const section = await SectionModel.findById(sectionId);
+    if (!section) {
+      return json({ error: "Section not found" }, { status: 404 });
+    }
+
     const variables = {
       themeId: themeId,
       files: [
         {
-          filename: `sections/${sectionIdentifier}.liquid`,
+          filename: `sections/${section.name.toLowerCase().replace(/\s+/g, "-")}.liquid`,
           body: {
             type: "TEXT",
             value: content,
@@ -292,8 +278,6 @@ export default function MySectionsPage() {
     const formData = new FormData();
     formData.append("sectionId", sectionId);
     formData.append("themeId", themeId);
-    formData.append("sectionIdentifier", section.identifier);
-    formData.append("filePath", section.filePath);
 
     submit(formData, { method: "post" });
   };
@@ -358,12 +342,6 @@ export default function MySectionsPage() {
               <Text as="h3" variant="headingMd">
                 {section.name}
               </Text>
-
-              <Badge tone={section.isFree ? "success" : "attention"}>
-                {section.isFree ? "Free" : "Paid"}
-              </Badge>
-              {section.isPopular && <Badge tone="info">Popular</Badge>}
-              {section.isTrending && <Badge tone="warning">Trending</Badge>}
             </InlineStack>
 
             <InlineStack gap="200" align="start" blockAlign="center">

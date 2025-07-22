@@ -7,6 +7,7 @@ const userSchema = new mongoose.Schema({
     required: true,
     unique: true
   },
+  admin: { type: Boolean, default: false },
   accessToken: {
     type: String,
     required: true

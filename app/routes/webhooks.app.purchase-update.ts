@@ -2,68 +2,68 @@ import { ActionFunction } from "@remix-run/node";
 import { authenticate } from "app/shopify.server";
 import PurchaseModel from "app/models/PurchaseModel";
 import UserModel from "app/models/userModel";
+import SectionModel from "app/models/SectionModel";
 import { connectToDB } from "app/db.server";
 
 export const action: ActionFunction = async ({ request }) => {
-  console.log("🎯 Purchase webhook received");
 
   try {
     const { payload, shop } = await authenticate.webhook(request);
 
-    console.log("📦 Webhook payload:", JSON.stringify(payload, null, 2));
-    console.log("🏪 Shop:", shop);
 
     // Only process if the purchase is active
-    if (payload.status === "ACTIVE") {
+    if (payload.app_purchase_one_time?.status === "ACTIVE") {
       await connectToDB();
 
       const user = await UserModel.findOne({ shop });
-      console.log("👤 Found user:", user);
 
       if (user) {
-        // Extract sectionId from the purchase name
-        const sectionIdMatch = payload.name?.match(/sectionId=([a-f0-9]{24})/);
-        const sectionId = sectionIdMatch ? sectionIdMatch[1] : null;
+        // Extract section name from the purchase name
+        const purchaseName = payload.app_purchase_one_time.name;
 
-        console.log("🔍 Extracted sectionId:", sectionId);
+        // Remove "Purchase section: " prefix and trim
+        const sectionName = purchaseName.replace("Purchase section: ", "").trim();
 
-        if (sectionId) {
-          // Check if purchase already exists to avoid duplicates
-          const existingPurchase = await PurchaseModel.findOne({
-            userId: user._id,
-            sectionId: sectionId,
-          });
+        if (sectionName) {
+          // Find the section by name
+          const section = await SectionModel.findOne({ name: sectionName });
 
-          if (!existingPurchase) {
-            const purchase = await PurchaseModel.create({
+          if (section) {
+            // Check if purchase already exists to avoid duplicates
+            const existingPurchase = await PurchaseModel.findOne({
               userId: user._id,
-              sectionId: sectionId,
-              chargeId: payload.id,
-              status: payload.status,
-              amount: payload.price?.amount,
-              currency: payload.price?.currency_code,
+              sectionId: section._id,
             });
 
-            console.log("✅ Purchase saved via webhook:", purchase);
+            if (!existingPurchase) {
+              const purchase = await PurchaseModel.create({
+                userId: user._id,
+                sectionId: section._id,
+                chargeId: payload.app_purchase_one_time.admin_graphql_api_id,
+                status: payload.app_purchase_one_time.status,
+                purchasedAt: new Date(),
+              });
+
+            } else {
+              existingPurchase.chargeId = payload.app_purchase_one_time.admin_graphql_api_id;
+              existingPurchase.status = payload.app_purchase_one_time.status;
+              await existingPurchase.save();
+            }
           } else {
-            console.log("ℹ️ Purchase already exists, skipping");
+            console.error("Could not find section with name:", sectionName);
           }
         } else {
-          console.error(
-            "❌ Could not extract sectionId from purchase name:",
-            payload.name,
-          );
+          console.error("Could not extract section name from purchase name:", purchaseName);
         }
       } else {
-        console.error("❌ No user found for shop:", shop);
+        console.error("No user found for shop:", shop);
       }
     } else {
-      console.log("ℹ️ Purchase status is not active:", payload.status);
+      console.log("Purchase status is not active:", payload.app_purchase_one_time?.status);
     }
 
     return new Response("OK", { status: 200 });
   } catch (error) {
-    console.error("❌ Webhook processing error:", error);
     return new Response("Error", { status: 500 });
   }
 };

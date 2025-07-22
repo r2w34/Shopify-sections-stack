@@ -14,7 +14,6 @@ export const action: ActionFunction = async () => {
     updatedAt: new Date()
   });
   
-  console.log("✅ User created:", user);
   
   return new Response("User created", { status: 200 });
 };

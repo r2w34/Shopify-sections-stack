@@ -31,9 +31,7 @@ export const action = async ({ request }: { request: any }) => {
     });
 
     if (existingPurchase) {
-      console.log("ℹ️ Already has free section, skipping create");
     } else {
-      console.log("✅ Saving free section to purchases");
       await PurchaseModel.create({
         userId: user._id,
         sectionId: section._id,
@@ -76,7 +74,7 @@ export const action = async ({ request }: { request: any }) => {
       variables: {
         name: `Purchase section: ${section.name} `,
         price: { amount: section.price.toString(), currencyCode: "USD" },
-        returnUrl: `${process.env.SHOPIFY_APP_URL}/app/purchase/callback?sectionId=${section._id}&shop=${session.shop}`,
+        returnUrl: `${process.env.SHOPIFY_APP_URL}/app/`,
         test: true,
       },
     },
@@ -90,7 +88,6 @@ export const action = async ({ request }: { request: any }) => {
   }
 
   if (appPurchaseOneTimeCreate.userErrors.length > 0) {
-    console.error(appPurchaseOneTimeCreate.userErrors);
     return json(
       { error: appPurchaseOneTimeCreate.userErrors },
       { status: 400 },

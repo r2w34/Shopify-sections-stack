@@ -1,9 +1,9 @@
 # Learn more about configuring your app at https://shopify.dev/docs/apps/tools/cli/configuration
 
 client_id = "e3838eae9d8f4d520127ce676a9c2d60"
-name = "sections-stack"
+name = "Sections Stack"
 handle = "sections-stack"
-application_url = "https://grateful-led-charm-cole.trycloudflare.com"
+application_url = "https://terrible-awareness-unsubscribe-bid.trycloudflare.com"
 embedded = true
 
 [build]
@@ -21,6 +21,10 @@ api_version = "2025-04"
   topics = [ "app/scopes_update" ]
   uri = "/webhooks/app/scopes_update"
 
+  [[webhooks.subscriptions]]
+  topics = [ "app_purchases_one_time/update" ]
+  uri = "/webhooks/app/purchase-update"
+
  
   
 [access_scopes]
@@ -29,7 +33,7 @@ scopes = "read_themes,write_themes"
 
 
 [auth]
-redirect_urls = ["https://grateful-led-charm-cole.trycloudflare.com/auth/callback", "https://grateful-led-charm-cole.trycloudflare.com/auth/shopify/callback", "https://grateful-led-charm-cole.trycloudflare.com/api/auth/callback"]
+redirect_urls = ["https://terrible-awareness-unsubscribe-bid.trycloudflare.com/auth/callback", "https://terrible-awareness-unsubscribe-bid.trycloudflare.com/auth/shopify/callback", "https://terrible-awareness-unsubscribe-bid.trycloudflare.com/api/auth/callback"]
 
 [pos]
 embedded = false
