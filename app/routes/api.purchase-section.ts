@@ -8,7 +8,18 @@ import { connectToDB } from "app/db.server";
 
 export const action = async ({ request }: { request: any }) => {
   const { session, admin } = await authenticate.admin(request);
-  const { sectionId } = await request.json();
+  
+  let sectionId;
+  try {
+    const body = await request.json();
+    sectionId = body.sectionId;
+  } catch (error) {
+    return json({ error: "Invalid request body" }, { status: 400 });
+  }
+
+  if (!sectionId || typeof sectionId !== 'string') {
+    return json({ error: "Valid sectionId is required" }, { status: 400 });
+  }
 
   await connectToDB();
 
@@ -75,7 +86,7 @@ export const action = async ({ request }: { request: any }) => {
         name: `Purchase section: ${section.name} `,
         price: { amount: section.price.toString(), currencyCode: "USD" },
         returnUrl: `${process.env.SHOPIFY_APP_URL}/app/`,
-        test: true,
+        test: process.env.NODE_ENV !== "production",
       },
     },
   );

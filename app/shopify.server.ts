@@ -58,6 +58,7 @@ const shopify = shopifyApp({
           await user.save();
         }
       } catch (error) {
+        console.error("[Shopify] Error in afterAuth hook:", error);
       }
     },
   },

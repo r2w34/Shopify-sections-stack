@@ -1,0 +1,29 @@
+# Production Dockerfile for Sections Stack
+FROM node:20-alpine
+
+WORKDIR /app
+
+# Install wget for healthcheck and build tools
+RUN apk add --no-cache wget python3 make g++
+
+# Copy package files
+COPY package*.json ./
+
+# Install ALL dependencies (including dev dependencies for building)
+RUN npm install && npm cache clean --force
+
+# Copy application code
+COPY . .
+
+# Create logs directory
+RUN mkdir -p /app/logs
+
+# Set environment
+ENV NODE_ENV=production
+ENV PORT=3000
+
+# Expose port
+EXPOSE 3000
+
+# Build and start the application
+CMD ["sh", "-c", "npm run build && npm start"]

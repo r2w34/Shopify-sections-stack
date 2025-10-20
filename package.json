@@ -14,7 +14,8 @@
     "lint": "eslint --cache --cache-location ./node_modules/.cache/eslint .",
     "shopify": "shopify",
     "graphql-codegen": "graphql-codegen",
-    "vite": "vite"
+    "vite": "vite",
+    "set-admin": "tsx scripts/set-admin.ts"
   },
   "type": "module",
   "engines": {
@@ -51,6 +52,7 @@
     "eslint": "^8.42.0",
     "eslint-config-prettier": "^10.0.1",
     "prettier": "^3.2.4",
+    "tsx": "^4.7.0",
     "typescript": "^5.2.2",
     "vite": "^6.2.2"
   },

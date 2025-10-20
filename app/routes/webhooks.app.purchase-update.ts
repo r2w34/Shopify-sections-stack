@@ -64,6 +64,7 @@ export const action: ActionFunction = async ({ request }) => {
 
     return new Response("OK", { status: 200 });
   } catch (error) {
-    return new Response("Error", { status: 500 });
+    console.error("[Webhook] Purchase update error:", error);
+    return new Response("Error processing webhook", { status: 500 });
   }
 };

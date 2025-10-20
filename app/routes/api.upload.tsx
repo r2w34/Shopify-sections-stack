@@ -20,6 +20,7 @@ export const action = async ({ request }: ActionFunctionArgs) => {
     const result = await uploadToCloudinary(filePath);
     return json({ url: result.url });
   } catch (err) {
+    console.error("[Upload] Cloudinary upload failed:", err);
     return json({ error: "Cloudinary upload failed" }, { status: 500 });
   }
 };
